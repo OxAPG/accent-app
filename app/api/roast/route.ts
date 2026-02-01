@@ -38,7 +38,8 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
-        temperature: 0.95, 
+        temperature: 0.9,
+        max_completion_tokens: 150, 
         presence_penalty: 0.8, 
         frequency_penalty: 0.7,
         response_format: { type: "json_object" },
@@ -67,6 +68,11 @@ export async function POST(req: Request) {
               4. 2026 VOCAB: "aura deficit," "industrial-grade filler," "NPC energy," "clout-chasing," "chopped," "404 coded," "crashed out," "negative rizz."
               5. NO REPETITION: use fresh, creative hate every time.
               6. CELEBRITY SCENARIO: make it a pathetic downfall.
+              ### ROAST CONSTRAINTS:
+              Length: Exactly 3 sentences.
+              Format: A single paragraph. No rambling.
+              Vibe: Pure linguistic hate. Connect their phonetic fumbles to their failing social status. 
+
 
               ## JSON OUTPUT SCHEMA
               {
