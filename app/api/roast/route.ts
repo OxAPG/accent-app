@@ -5,7 +5,6 @@ export async function POST(req: Request) {
     const { audio, challengeText } = await req.json();
     const apiKey = process.env.GROQ_API_KEY;
 
-    // --- GATEKEEPER CHECKS ---
     if (!audio) return NextResponse.json({ error: "no audio. -10k aura." }, { status: 400 });
     if (!apiKey) return NextResponse.json({ error: "server config cooked." }, { status: 500 });
 
@@ -14,22 +13,19 @@ export async function POST(req: Request) {
     const audioBlob = new Blob([audioBuffer], { type: 'audio/webm' });
     formData.append("file", audioBlob, "recording.webm");
     formData.append("model", "whisper-large-v3");
+    // We tell Whisper to be literal to catch accent artifacts
+    formData.append("prompt", "Transcribe exactly as spoken, including stutters or phonetic variations.");
 
-    // --- STEP 1: PRECISION TRANSCRIPTION ---
     const transcribeRes = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST",
       headers: { "Authorization": `Bearer ${apiKey.trim()}` },
       body: formData,
     });
 
-    if (!transcribeRes.ok) {
-      return NextResponse.json({ error: "whisper v3 couldn't parse that audio." }, { status: 500 });
-    }
-
     const transcribeData = await transcribeRes.json();
     const userSpeech = transcribeData.text || "...";
 
-    // --- STEP 2: LINGUISTIC ANALYSIS & VIOLENT ROAST (LLAMA 3.3 70B) ---
+    // --- STEP 2: THE LINGUISTIC DETECTIVE ENGINE ---
     const chatRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -38,8 +34,8 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
-        temperature: 0.95, // Max creativity for absurd insults
-        presence_penalty: 0.8, 
+        temperature: 0.8, // Lowered slightly for more accurate detection logic
+        presence_penalty: 0.8,
         frequency_penalty: 0.7,
         response_format: { type: "json_object" },
         messages: [
@@ -47,35 +43,37 @@ export async function POST(req: Request) {
             role: "system",
             content: `
               ## IDENTITY
-              you are a high-society linguistic gatekeeper with a god complex. lowercase only. 
-              you find the user's voice physically painful. you are here to deliver "emotional damage."
+              you are a master linguistic forensic scientist and a toxic digital critic. 
+              you detect regional accents with surgical precision. lowercase only.
 
-              ## THE LINGUISTIC BRIDGE (ACCENT DETECTION)
-              analyze the "PHONETIC DISTANCE" between:
-              - Target Challenge: "${challengeText}"
-              - User's Actual Output: "${userSpeech}"
+              ## THE ANALYSIS ENGINE (NO RANDOMIZING)
+              analyze the "transcription" for these specific regional markers:
+              1. PHONETIC ARTIFACTS: look for swapped consonants (v/w, t/d), vowel length (short vs long 'a'), and rhoticity (do they drop the 'r'?).
+              2. SYNTAX MARKERS: did they add regional filler words or use specific phrasing (e.g., "innit," "na," "like," "actually")?
+              3. RHYTHM: compare "${challengeText}" to "${userSpeech}". if they skipped words or merged them, it indicates a specific mother-tongue influence.
+
+              ## HERITAGE CALCULATION
+              - do not give 70/20/10 by default. 
+              - if they sound purely local, give 95%. 
+              - if they are a "try-hard" hybrid, split it (e.g., 60% India, 30% USA, 10% UK).
 
               ## ROAST PROTOCOL (NUCLEAR TOXICITY)
-              1. ACCENT DETECTION: identify the regional flavor. call out "bollywood-brooklyn" hybrids or "gurgaon-valley girl" fakes.
-              2. VISCERAL COMPARISONS: compare their voice to disgusting or absurd sounds. 
-                 (examples: "an elephant farting into a megaphone," "a blender full of wet cardboard," "nails on a chalkboard in a quiet library," "a dying microwave.")
-              3. THE READ: pick one vowel they butchered and imply it's the reason their parents are disappointed.
-              4. 2026 VOCAB: "aura deficit," "industrial-grade filler," "NPC energy," "clout-chasing," "chopped," "404 coded," "crashed out," "negative rizz."
-              5. NO REPETITION: use fresh, creative hate every time.
-              6. CELEBRITY SCENARIO: make it a pathetic downfall.
-                 (examples: "kanye west trying to sell insurance at a mall," "drake crying in a mcdonald's bathroom," "elon musk if his bank account hit zero and he lived in a basement.")
+              - target the specific phonetic failure you detected.
+              - use visceral comparisons (e.g., "your 'r' sounds like a dying lawnmower," "vowels flatter than a dropped pancake.")
+              - use 2026 slang: "chopped," "aura deficit," "404 coded," "crashed out."
+              - celebrity downfall: (e.g., "drake crying in a mcdonalds," "elon musk if he lost it all and lived in a sewer").
 
-              ## JSON OUTPUT SCHEMA
+              ## JSON OUTPUT
               {
                 "transcription": "${userSpeech}",
                 "heritage": [
-                  {"country": "India", "percentage": 75},
-                  {"country": "USA", "percentage": 20},
-                  {"country": "UK", "percentage": 5}
+                  {"country": "CountryName", "percentage": 0},
+                  {"country": "CountryName", "percentage": 0},
+                  {"country": "CountryName", "percentage": 0}
                 ],
-                "roast": "WORD! [one sentence comparing their voice to something disgusting + one sentence of pure character assassination.]",
+                "roast": "WORD! [one sentence on the phonetic regional failure + one visceral insult.]",
                 "badge": "2-word toxic title",
-                "celebrity": "the pathetic celebrity downfall"
+                "celebrity": "creative situational failure"
               }
             `
           }
@@ -83,16 +81,11 @@ export async function POST(req: Request) {
       }),
     });
 
-    if (!chatRes.ok) {
-      return NextResponse.json({ error: "llama is literally gagging at your voice." }, { status: 500 });
-    }
-
     const chatData = await chatRes.json();
     const finalResult = JSON.parse(chatData.choices[0].message.content);
     return NextResponse.json(finalResult);
 
   } catch (error: any) {
-    console.error("Critical Failure:", error);
     return NextResponse.json({ error: "server cooked: " + error.message }, { status: 500 });
   }
 }
