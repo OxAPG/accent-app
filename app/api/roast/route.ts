@@ -5,23 +5,17 @@ export async function POST(req: Request) {
     const { audio, challengeText } = await req.json();
     const apiKey = process.env.GROQ_API_KEY;
 
-    // --- GATEKEEPER CHECKS ---
-    if (!audio) {
-      return NextResponse.json({ error: "no audio. -10k aura." }, { status: 400 });
-    }
-    if (!apiKey) {
-      return NextResponse.json({ error: "server config cooked. check vercel env vars." }, { status: 500 });
-    }
+    // --- SECURITY & VALIDATION ---
+    if (!audio) return NextResponse.json({ error: "no audio. -10k aura." }, { status: 400 });
+    if (!apiKey) return NextResponse.json({ error: "server config cooked. add your key." }, { status: 500 });
 
-    // --- STEP 1: PREPARE AUDIO FOR WHISPER ---
     const audioBuffer = Buffer.from(audio, 'base64');
     const formData = new FormData();
-    // We use a Blob to satisfy the 'File' requirement in the Groq API
     const audioBlob = new Blob([audioBuffer], { type: 'audio/webm' });
     formData.append("file", audioBlob, "recording.webm");
     formData.append("model", "whisper-large-v3");
 
-    // --- STEP 2: SPEECH-TO-TEXT (WHISPER) ---
+    // --- STEP 1: TRANSCRIPTION (WHISPER V3) ---
     const transcribeRes = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST",
       headers: { "Authorization": `Bearer ${apiKey.trim()}` },
@@ -29,15 +23,13 @@ export async function POST(req: Request) {
     });
 
     if (!transcribeRes.ok) {
-      const errBody = await transcribeRes.json();
-      console.error("Whisper Error:", errBody);
-      return NextResponse.json({ error: "whisper couldn't decode your mumbles." }, { status: 500 });
+      return NextResponse.json({ error: "AI couldn't parse that mumble." }, { status: 500 });
     }
 
     const transcribeData = await transcribeRes.json();
     const userSpeech = transcribeData.text || "...";
 
-    // --- STEP 3: THE SAVAGE AI CRITIC (LLAMA 3.3 70B) ---
+    // --- STEP 2: THE REFINED ROAST (LLAMA 3.3 70B) ---
     const chatRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -46,29 +38,40 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
-        temperature: 0.95, // Maxed out for ultimate creativity
+        temperature: 0.92, // High enough for creativity, low enough for precision
         response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
             content: `
               ## IDENTITY
-              you are an elite linguistic assassin and gen-z trendsetter. lowercase only. 
-              you have zero tolerance for "mid" energy, corporate accents, or fumbled words.
+              you are a high-tier digital critic and a polyglot linguistic anthropologist. 
+              you are sharp, observant, and unimpressed by "mid" attempts at charisma. 
+              lowercase only. no yap. 
 
-              ## THE DATA
-              1. the challenge the user tried to read: "${challengeText}"
-              2. what the user actually sounded like: "${userSpeech}"
+              ## MISSION
+              analyze the contrast between the challenge: "${challengeText}" 
+              and what the user actually said: "${userSpeech}".
 
-              ## ROAST PROTOCOL (STRICT)
-              1. THE PHONETIC READ: start by picking ONE word they absolutely destroyed. call out their accent specifically (e.g., "trying too hard to sound like an LA influencer but you're giving customer support").
-              2. THE VIBE: use 2026 brainrot slang (negative aura, skibidi, crash out, locked in, based, rizzless, cooked).
-              3. CELEBRITY TWIST: this MUST be a weird, specific comparison.
-                 (good examples: "batman if he moved to gurgaon," "justin bieber after a double shift at a momo stall," "lana del rey but she's actually just sad in ohio").
-              4. LENGTH: exactly 2 sentences. make them hurt.
-              5. HERITAGE: 3 REAL countries only (e.g., India, USA, UK, Canada). adjust percentages based on the accent you heard.
+              ## LINGUISTIC ANALYSIS PROTOCOL (STRICT)
+              1. PHONETIC AUDIT: find exactly where their accent "crashed out." did they flatten their vowels? did they miss a glottal stop? did they sound like they're reading a teleprompter for the first time?
+              2. 2026 SLANG DICTIONARY: 
+                 - use "chopped" for bad delivery.
+                 - use "404 coded" for people acting clueless.
+                 - use "aura farming" for trying too hard to sound cool.
+                 - use "beige flag" for sounding boring/generic.
+                 - use "choppelganger" if they sound like a budget version of someone famous.
+                 - use "zesty" if they are being overly dramatic.
+                 - avoid overusing "skibidi" or "rizz" unless used ironically to mock them.
 
-              ## JSON OUTPUT SCHEMA
+              ## ROAST PROTOCOL (Savage Mode)
+              1. THE HIT: target their vocal frequency. if they sound like they're in a mumbai call center trying to be from brooklyn, call it out. 
+              2. THE ATTACK: exactly 2 sentences. one for the accent/voice, one for the general "beige" energy they're giving off.
+              3. CELEBRITY TWIST: this must be a "scenario-based" failure.
+                 (examples: "morgan freeman if he was reading a menu at a local dhaba," "justin bieber after being rejected from a startup incubator," "donald trump if he was a yoga instructor in goa").
+              4. HERITAGE: use 3 real countries. be brutally honest about the accent mix.
+
+              ## JSON OUTPUT
               {
                 "transcription": "${userSpeech}",
                 "heritage": [
@@ -76,9 +79,9 @@ export async function POST(req: Request) {
                   {"country": "USA", "percentage": 25},
                   {"country": "UK", "percentage": 10}
                 ],
-                "roast": "WORD! your 2-sentence personal attack here.",
+                "roast": "WORD! [Your two sentences of surgical linguistic destruction.]",
                 "badge": "2-word savage title",
-                "celebrity": "the creative celebrity comparison"
+                "celebrity": "the situational celebrity comparison"
               }
             `
           }
@@ -86,20 +89,12 @@ export async function POST(req: Request) {
       }),
     });
 
-    if (!chatRes.ok) {
-      const chatErr = await chatRes.json();
-      console.error("Llama Error:", chatErr);
-      return NextResponse.json({ error: "llama is literally speechless at your voice." }, { status: 500 });
-    }
-
     const chatData = await chatRes.json();
     const finalResult = JSON.parse(chatData.choices[0].message.content);
-    
-    // Final return to the frontend
     return NextResponse.json(finalResult);
 
   } catch (error: any) {
-    console.error("Top-Level Crash:", error);
+    console.error("Server Error:", error);
     return NextResponse.json({ error: "server cooked: " + error.message }, { status: 500 });
   }
 }
