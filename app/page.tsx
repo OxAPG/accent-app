@@ -1,0 +1,300 @@
+"use client";
+import React, { useState, useRef, useEffect } from 'react';
+import { toPng, toBlob } from 'html-to-image';
+
+// --- TYPES & INTERFACES ---
+interface Heritage {
+  country: string;
+  percentage: number;
+}
+
+interface RoastResult {
+  transcription: string;
+  heritage: Heritage[];
+  roast: string;
+  badge: string;
+  celebrity: string;
+}
+
+// --- FULL CHALLENGE DATA (10 SAVAGE OPTIONS) ---
+const CHALLENGES = [
+  "Can I please get a large iced latte with oat milk and zero attitude?",
+  "I'm literally just a girl, please don't ask me to explain my credit card statement.",
+  "Bhai, if the momos aren't spicy enough to make me see God, I don't want them.",
+  "Trust me, I've been to Bandra once, I basically own a startup now.",
+  "No cap, your fit is mid and your aura is practically in the negatives right now.",
+  "Actually, I'm a digital nomad, so I work from wherever the Wi-Fi doesn't lag.",
+  "Can we skip the small talk and just discuss why 2014 Tumblr aesthetic is back?",
+  "I'm not saying I'm the main character, but the lighting today says otherwise.",
+  "It's giving very much 'unpaid intern on their fifth cup of espresso' vibes.",
+  "I requested the window seat specifically so I could romanticize my life in peace."
+];
+
+// --- REUSABLE METER COMPONENT ---
+const Meter = ({ label, percent, color }: { label: string; percent: number; color: string }) => (
+  <div className="mb-4 w-full">
+    <div className="flex justify-between font-black uppercase text-[10px] mb-1">
+      <span>{label}</span>
+      <span>{percent}%</span>
+    </div>
+    <div className="h-6 bg-white border-4 border-black shadow-[3px_3px_0px_#000] overflow-hidden">
+      <div 
+        className={`h-full border-r-4 border-black transition-all duration-1000 ${color}`} 
+        style={{ width: `${percent}%` }} 
+      />
+    </div>
+  </div>
+);
+
+export default function AccentRoaster() {
+  // --- STATE MANAGEMENT ---
+  const [mounted, setMounted] = useState(false);
+  const [step, setStep] = useState<'landing' | 'recording' | 'analyzing' | 'results'>('landing');
+  const [challenge, setChallenge] = useState("");
+  const [timer, setTimer] = useState(5);
+  const [result, setResult] = useState<RoastResult | null>(null);
+  const [card, setCard] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  // --- REFS ---
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const shareRef = useRef<HTMLDivElement>(null);
+
+  // --- LIFECYCLE: MOUNT ---
+  useEffect(() => { 
+    setMounted(true); 
+    setChallenge(CHALLENGES[Math.floor(Math.random() * CHALLENGES.length)]);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, []);
+
+  // --- LIFECYCLE: TIMER ENGINE ---
+  useEffect(() => {
+    if (step === 'recording' && timer > 0) {
+      intervalRef.current = setInterval(() => {
+        setTimer((prev) => prev - 1);
+      }, 1000);
+    } else if (timer === 0 && step === 'recording') {
+      stopRecording();
+    }
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [step, timer]);
+
+  // --- CORE LOGIC: API & RECORDING ---
+  const resetGame = () => {
+    setChallenge(CHALLENGES[Math.floor(Math.random() * CHALLENGES.length)]);
+    setResult(null);
+    setCard(0);
+    setError(null);
+    setTimer(5);
+    setStep('landing');
+  };
+
+  const startRecording = async () => {
+    try {
+      setError(null);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+      
+      mediaRecorder.ondataavailable = (e) => { 
+        if (e.data.size > 0) chunksRef.current.push(e.data); 
+      };
+      
+      mediaRecorder.onstop = handleRecordingStop;
+      mediaRecorder.start();
+      setStep('recording');
+      setTimer(5);
+    } catch (err) {
+      setError("Mic access denied. Enable your mic to start roasting.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    }
+  };
+
+  const handleRecordingStop = async () => {
+    setStep('analyzing');
+    if (chunksRef.current.length === 0) {
+      setError("No audio captured. Speak louder!");
+      setStep('landing');
+      return;
+    }
+    
+    const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
+    const reader = new FileReader();
+    reader.readAsDataURL(audioBlob);
+    reader.onloadend = async () => {
+      const base64Audio = (reader.result as string).split(',')[1];
+      sendToApi(base64Audio);
+    };
+  };
+
+  const sendToApi = async (base64Audio: string) => {
+    try {
+      const res = await fetch('/api/roast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audio: base64Audio, challengeText: challenge })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Groq server timed out.");
+      setResult(data);
+      setStep('results');
+    } catch (err: any) {
+      setError(err.message || "AI Error. The roast was too hot.");
+      setStep('landing');
+    }
+  };
+
+  // --- SOCIAL: SAVE & SHARE ---
+  const downloadCard = async () => {
+    if (!shareRef.current) return;
+    const dataUrl = await toPng(shareRef.current, { cacheBust: true });
+    const link = document.createElement('a');
+    link.download = 'my-roast.png';
+    link.href = dataUrl;
+    link.click();
+  };
+
+  const shareCard = async () => {
+    if (!shareRef.current) return;
+    try {
+      const blob = await toBlob(shareRef.current, { cacheBust: true });
+      if (!blob) return;
+      const file = new File([blob], 'roast.png', { type: 'image/png' });
+      
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Accent Roast',
+          text: `The AI says I sound like ${result?.celebrity}. 💀 #AccentRoaster`,
+        });
+      } else {
+        alert("Sharing not supported on this browser. Save the image instead!");
+      }
+    } catch (err) {
+      console.error("Sharing failed", err);
+    }
+  };
+
+  if (!mounted) return <div className="min-h-screen bg-[#FFFF00]" />;
+
+  return (
+    <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black overflow-hidden select-none">
+      
+      {/* --- 1. LANDING SCREEN --- */}
+      {step === 'landing' && (
+        <div className="text-center w-full max-w-sm animate-in fade-in duration-500">
+          <h1 className="text-5xl font-black mb-8 uppercase italic -rotate-2 drop-shadow-[4px_4px_0px_#FF00FF]">Accent Roaster</h1>
+          <div className="bg-white border-4 border-black p-6 mb-8 shadow-[8px_8px_0px_#000] text-left">
+            <p className="text-[10px] font-black uppercase opacity-40 mb-2">Today's Challenge:</p>
+            <p className="text-xl font-bold italic leading-tight">"{challenge}"</p>
+          </div>
+          <button 
+            onClick={startRecording}
+            className="w-full bg-[#FF00FF] border-4 border-black py-6 text-4xl font-black shadow-[10px_10px_0px_#000] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
+          >
+            RECORD
+          </button>
+          {error && <p className="mt-6 bg-black text-white p-2 font-black text-xs uppercase animate-bounce italic">!! {error} !!</p>}
+        </div>
+      )}
+
+      {/* --- 2. RECORDING SCREEN --- */}
+      {step === 'recording' && (
+        <div className="text-center w-full max-w-sm animate-in zoom-in-95 duration-300">
+          <div className="bg-white border-4 border-black p-6 mb-8 shadow-[12px_12px_0px_#000]">
+            <p className="text-sm font-black uppercase opacity-40 mb-4">Read Now Loudly:</p>
+            <p className="text-2xl font-black italic leading-tight underline decoration-4 underline-offset-4">"{challenge}"</p>
+          </div>
+          <div className="text-9xl font-black leading-none animate-pulse">{timer}</div>
+          <p className="text-xl font-black mt-8 uppercase tracking-widest bg-white border-2 border-black inline-block px-4">Recording...</p>
+        </div>
+      )}
+
+      {/* --- 3. ANALYZING SCREEN --- */}
+      {step === 'analyzing' && (
+        <div className="text-center">
+          <div className="w-20 h-20 border-8 border-black border-t-[#FF00FF] rounded-full animate-spin mx-auto mb-8"></div>
+          <h2 className="text-4xl font-black uppercase italic animate-pulse">Consulting the Council...</h2>
+          <p className="mt-4 font-bold opacity-60 italic text-sm">Calculating your aura deficit...</p>
+        </div>
+      )}
+
+      {/* --- 4. RESULTS (3-CARD CAROUSEL) --- */}
+      {step === 'results' && result && (
+        <div className="w-full max-w-sm flex flex-col items-center animate-in slide-in-from-bottom-12 duration-500">
+          <div className="bg-white border-4 border-black p-6 w-full shadow-[12px_12px_0px_#000] mb-8 min-h-[460px] flex flex-col">
+            
+            {/* SUB-STEP 0: DNA METERS */}
+            {card === 0 && (
+              <div className="animate-in fade-in slide-in-from-bottom-4 flex-1">
+                <h2 className="text-3xl font-black mb-8 italic underline uppercase decoration-4">Accent DNA</h2>
+                {result.heritage.map((h, i) => (
+                  <Meter key={i} label={h.country} percent={h.percentage} color={i===0?'bg-[#00FF00]':i===1?'bg-[#FF00FF]':'bg-[#00FFFF]'} />
+                ))}
+                <p className="text-[10px] font-black uppercase opacity-30 mt-8 text-center">Calculated by Groq LPU Whisper V3</p>
+              </div>
+            )}
+
+            {/* SUB-STEP 1: THE PERSONAL ROAST */}
+            {card === 1 && (
+              <div className="animate-in fade-in slide-in-from-right-8 h-full flex flex-col justify-center flex-1">
+                <p className="text-[10px] font-black uppercase opacity-30 mb-4">Transcription: "{result.transcription}"</p>
+                <p className="text-3xl font-black italic text-[#FF00FF] uppercase leading-tight underline decoration-black underline-offset-4">
+                  {result.roast}
+                </p>
+              </div>
+            )}
+
+            {/* SUB-STEP 2: SHAREABLE STORY CARD */}
+            {card === 2 && (
+              <div className="flex flex-col h-full animate-in zoom-in-95 duration-300">
+                <div ref={shareRef} className="bg-[#FF00FF] border-4 border-black p-6 flex flex-col justify-between text-white h-[400px] shadow-[8px_8px_0px_#000]">
+                  <div>
+                    <h1 className="text-5xl font-black italic leading-none">ROASTED.</h1>
+                    <p className="text-[8px] font-black tracking-widest mt-1 opacity-70">ACCENT-ROASTER.AI // 2026</p>
+                  </div>
+                  
+                  <div className="bg-white text-black p-4 border-4 border-black rotate-2 text-center shadow-[4px_4px_0px_#000]">
+                    <p className="text-[10px] font-black uppercase opacity-40">Primary Origin:</p>
+                    <p className="text-3xl font-black uppercase leading-none">{result.heritage[0].country}</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="bg-black text-[#00FF00] p-3 font-bold italic text-sm leading-tight border-2 border-white">
+                      "{result.celebrity}"
+                    </div>
+                    <div className="bg-[#FFFF00] text-black p-2 text-center font-black text-xs border-2 border-black uppercase italic shadow-[3px_3px_0px_#000]">
+                      Status: {result.badge}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mt-6">
+                  <button onClick={downloadCard} className="bg-[#00FFFF] border-2 border-black p-3 font-black text-xs uppercase shadow-[4px_4px_0px_#000] active:shadow-none active:translate-y-1 transition-all">SAVE 💾</button>
+                  <button onClick={shareCard} className="bg-[#00FF00] border-2 border-black p-3 font-black text-xs uppercase shadow-[4px_4px_0px_#000] active:shadow-none active:translate-y-1 transition-all">SHARE 🚀</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* GLOBAL NAVIGATION BUTTON */}
+          <button 
+            onClick={() => card < 2 ? setCard(c => c + 1) : resetGame()} 
+            className="w-full bg-black text-white py-5 text-2xl font-black uppercase border-4 border-black shadow-[6px_6px_0px_#FF00FF] hover:bg-white hover:text-black transition-all active:shadow-none active:translate-y-1"
+          >
+            {card < 2 ? "NEXT CARD →" : "TRY AGAIN"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
