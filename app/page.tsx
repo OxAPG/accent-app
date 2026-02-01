@@ -247,7 +247,7 @@ export default function AccentRoaster() {
             {/* SUB-STEP 1: THE PERSONAL ROAST */}
             {card === 1 && (
               <div className="animate-in fade-in slide-in-from-right-8 h-full flex flex-col justify-center flex-1">
-                <p className="text-[10px] font-black uppercase opacity-30 mb-4">Transcription: "{result.transcription}"</p>
+                <p className="text-[25px] text-[#000000] font-black uppercase opacity-30 mb-4">Transcription: "{result.transcription}"</p>
                 <p className="text-3xl font-black italic text-[#FF00FF] uppercase leading-tight underline decoration-black underline-offset-4">
                   {result.roast}
                 </p>
