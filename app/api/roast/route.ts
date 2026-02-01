@@ -66,7 +66,7 @@ export async function POST(req: Request) {
               3. THE READ: pick one vowel they butchered and imply it's the reason their parents are disappointed.
               4. 2026 VOCAB: "aura deficit," "industrial-grade filler," "NPC energy," "clout-chasing," "chopped," "404 coded," "crashed out," "negative rizz."
               5. NO REPETITION: use fresh, creative hate every time.
-              6. CELEBRITY SCENARIO: make it a pathetic downfall.
+              6. CELEBRITY SCENARIO: make it a pathetic downfall,use real celebrity examples.
               ### ROAST CONSTRAINTS:
               Length: Exactly 3 sentences.
               Format: A single paragraph. No rambling.
