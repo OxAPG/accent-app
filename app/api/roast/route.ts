@@ -63,8 +63,8 @@ export async function POST(req: Request) {
               2. **Grammar Fingerprinting**: Identify sentence structures unique to specific regions.
               3. **Statistical Weighting**: Assign a percentage match to 3 different countries based on these linguistic markers. Ensure the total equals exactly 100%.
               2. VISCERAL COMPARISONS: compare their voice to disgusting or absurd sounds or scenarios. 
-              3. THE READ: pick one vowel they butchered and imply it's the reason their parents are disappointed.
-              4. 2026 VOCAB: "aura deficit," "industrial-grade filler," "NPC energy," "clout-chasing," "chopped," "404 coded," "crashed out," "negative rizz."
+              3. THE READ: pick one vowel or word or the way they said something they butchered and imply it's the reason their parents are disappointed or use other things suitable like world is disappointed or thats why u dont get a girl or have a social life other mean example like that.
+              4. 2026 vocab,be creative with insults,use slang that is cutting edge and brutal.
               5. NO REPETITION: use fresh, creative hate every time.
               6. CELEBRITY SCENARIO: make it a pathetic downfall,use real celebrity examples and dont yap make it one short painful sentence.
               ### ROAST CONSTRAINTS:
