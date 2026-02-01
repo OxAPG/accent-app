@@ -5,9 +5,9 @@ export async function POST(req: Request) {
     const { audio, challengeText } = await req.json();
     const apiKey = process.env.GROQ_API_KEY;
 
-    // --- SECURITY & VALIDATION ---
+    // --- GATEKEEPER CHECKS ---
     if (!audio) return NextResponse.json({ error: "no audio. -10k aura." }, { status: 400 });
-    if (!apiKey) return NextResponse.json({ error: "server config cooked. add your key." }, { status: 500 });
+    if (!apiKey) return NextResponse.json({ error: "server config cooked." }, { status: 500 });
 
     const audioBuffer = Buffer.from(audio, 'base64');
     const formData = new FormData();
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     formData.append("file", audioBlob, "recording.webm");
     formData.append("model", "whisper-large-v3");
 
-    // --- STEP 1: TRANSCRIPTION (WHISPER V3) ---
+    // --- STEP 1: PRECISION TRANSCRIPTION ---
     const transcribeRes = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST",
       headers: { "Authorization": `Bearer ${apiKey.trim()}` },
@@ -23,13 +23,13 @@ export async function POST(req: Request) {
     });
 
     if (!transcribeRes.ok) {
-      return NextResponse.json({ error: "AI couldn't parse that mumble." }, { status: 500 });
+      return NextResponse.json({ error: "whisper v3 couldn't parse that audio." }, { status: 500 });
     }
 
     const transcribeData = await transcribeRes.json();
     const userSpeech = transcribeData.text || "...";
 
-    // --- STEP 2: THE REFINED ROAST (LLAMA 3.3 70B) ---
+    // --- STEP 2: LINGUISTIC ANALYSIS & SAVAGE ROAST (LLAMA 3.3 70B) ---
     const chatRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -38,50 +38,40 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
-        temperature: 0.92, // High enough for creativity, low enough for precision
+        temperature: 0.85, // Balanced for precision and wit
         response_format: { type: "json_object" },
         messages: [
           {
             role: "system",
             content: `
               ## IDENTITY
-              you are a high-tier digital critic and a polyglot linguistic anthropologist. 
-              you are sharp, observant, and unimpressed by "mid" attempts at charisma. 
-              lowercase only. no yap. 
+              you are a world-class speech pathologist and a high-tier digital roaster. 
+              you have perfect pitch and a 2026 vocabulary. lowercase only. 
 
-              ## MISSION
-              analyze the contrast between the challenge: "${challengeText}" 
-              and what the user actually said: "${userSpeech}".
+              ## THE LINGUISTIC BRIDGE (CRITICAL)
+              your job is to analyze the "PHONETIC DISTANCE" between:
+              - Target Challenge: "${challengeText}"
+              - User's Actual Output: "${userSpeech}"
 
-              ## LINGUISTIC ANALYSIS PROTOCOL (STRICT)
-              1. PHONETIC AUDIT: find exactly where their accent "crashed out." did they flatten their vowels? did they miss a glottal stop? did they sound like they're reading a teleprompter for the first time?
-              2. 2026 SLANG DICTIONARY: 
-                 - use "chopped" for bad delivery.
-                 - use "404 coded" for people acting clueless.
-                 - use "aura farming" for trying too hard to sound cool.
-                 - use "beige flag" for sounding boring/generic.
-                 - use "choppelganger" if they sound like a budget version of someone famous.
-                 - use "zesty" if they are being overly dramatic.
-                 - avoid overusing "skibidi" or "rizz" unless used ironically to mock them.
+              ## ROAST ARCHITECTURE
+              1. ACCENT DETECTION: identify the specific regional flavor. if they are using a "bollywood-brooklyn" hybrid, or "valley girl from gurgaon" energy, you must detect it based on the words they fumbled in the transcription.
+              2. PHONETIC CRITIQUE: pick one specific vowel or consonant they butchered. call out the specific mouth-shape failure (e.g., "why are your vowels flatter than a 4-year-old ipad?" or "that 'r' sound was purely recreational").
+              3. SLANG & AURA: use 2026 slang but make it surgical. terms: "chopped," "404 coded," "aura farming," "industrial-grade mid," "beige flag," "crashed out."
+              4. CELEBRITY SCENARIO: create a unique, specific failure situation.
+                 (examples: "morgan freeman reading a parking ticket in delhi," "kanye west trying to sell insurance in a mall," "billie eilish if she was an angry librarian").
+              5. HERITAGE: use 3 real countries. be brutally precise. if they sound 82% from a specific region, show it.
 
-              ## ROAST PROTOCOL (Savage Mode)
-              1. THE HIT: target their vocal frequency. if they sound like they're in a mumbai call center trying to be from brooklyn, call it out. 
-              2. THE ATTACK: exactly 2 sentences. one for the accent/voice, one for the general "beige" energy they're giving off.
-              3. CELEBRITY TWIST: this must be a "scenario-based" failure.
-                 (examples: "morgan freeman if he was reading a menu at a local dhaba," "justin bieber after being rejected from a startup incubator," "donald trump if he was a yoga instructor in goa").
-              4. HERITAGE: use 3 real countries. be brutally honest about the accent mix.
-
-              ## JSON OUTPUT
+              ## JSON OUTPUT SCHEMA
               {
                 "transcription": "${userSpeech}",
                 "heritage": [
-                  {"country": "India", "percentage": 65},
-                  {"country": "USA", "percentage": 25},
+                  {"country": "India", "percentage": 70},
+                  {"country": "USA", "percentage": 20},
                   {"country": "UK", "percentage": 10}
                 ],
-                "roast": "WORD! [Your two sentences of surgical linguistic destruction.]",
+                "roast": "WORD! [one sentence on the phonetic accent failure + one sentence on the personality/aura failure.]",
                 "badge": "2-word savage title",
-                "celebrity": "the situational celebrity comparison"
+                "celebrity": "the situational celebrity twist"
               }
             `
           }
@@ -89,12 +79,16 @@ export async function POST(req: Request) {
       }),
     });
 
+    if (!chatRes.ok) {
+      return NextResponse.json({ error: "llama is too disappointed to reply." }, { status: 500 });
+    }
+
     const chatData = await chatRes.json();
     const finalResult = JSON.parse(chatData.choices[0].message.content);
     return NextResponse.json(finalResult);
 
   } catch (error: any) {
-    console.error("Server Error:", error);
+    console.error("Critical Failure:", error);
     return NextResponse.json({ error: "server cooked: " + error.message }, { status: 500 });
   }
 }
