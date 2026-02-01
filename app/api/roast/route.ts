@@ -39,7 +39,6 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
         temperature: 0.9,
-        max_completion_tokens: 150, 
         presence_penalty: 0.8, 
         frequency_penalty: 0.7,
         response_format: { type: "json_object" },
