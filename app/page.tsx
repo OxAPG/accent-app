@@ -200,27 +200,17 @@ export default function AccentRoaster() {
   };
 
   useEffect(() => {
-  // 1. Voice Priming (Keep this)
-  const primeVoices = () => window.speechSynthesis.getVoices();
-  primeVoices();
-  if (window.speechSynthesis.onvoiceschanged !== undefined) {
-    window.speechSynthesis.onvoiceschanged = primeVoices;
-  }
-
-  // 2. NUCLEAR DETECTION (Replace your old UA check with this)
-  const ua = navigator.userAgent || navigator.vendor || (window as any).opera;
-  // This regex catches Instagram, Facebook, Threads, and Messenger
-  const isMetaBrowser = /Instagram|FBAN|FBAV|Threads|Messenger/i.test(ua);
-  
-  // Extra check: Looking for Instagram's internal JS objects
-  const isInstaWindow = !!(window as any).Instagram || !!(window as any)._instgrm;
-
-  setIsIAB(isMetaBrowser || isInstaWindow);
-
-  // 3. Initialization (Keep this)
-  setMounted(true);
-  setChallenge(CHALLENGES[Math.floor(Math.random() * CHALLENGES.length)]);
-}, []);
+    const primeVoices = () => window.speechSynthesis.getVoices();
+    primeVoices();
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = primeVoices;
+    }
+    const ua = navigator.userAgent || navigator.vendor || (window as any).opera;
+    const isInstagram = /Instagram|FBAN|FBAV/i.test(ua);
+    setIsIAB(isInstagram);
+    setMounted(true);
+    setChallenge(CHALLENGES[Math.floor(Math.random() * CHALLENGES.length)]);
+  }, []);
 
   // --- TIMER ENGINE ---
   useEffect(() => {
@@ -363,50 +353,7 @@ export default function AccentRoaster() {
   };
 
   // This ensures we don't show the game logic until we know the browser type
-// 1. Wait for mounting
 if (!mounted) return <div className="min-h-screen bg-[#FFFF00]" />;
-
-// 2. The Absolute Gatekeeper
-if (isIAB) {
-  return (
-    <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black">
-      <div className="text-center w-full max-w-sm">
-        <h1 className="text-6xl font-black mb-8 uppercase italic -rotate-2 drop-shadow-[4px_4px_0px_#FF00FF]">STOP.</h1>
-        <div className="bg-black text-[#00FF00] border-4 border-black p-6 mb-8 shadow-[8px_8px_0px_#00FF00]">
-          <p className="text-xl font-black uppercase leading-tight">Instagram is sabotaging your microphone.</p>
-        </div>
-        <p className="font-bold mb-8 uppercase text-sm">
-          To get roasted:
-          <br /><br />
-          1. Tap the <span className="bg-white px-2">...</span> (top right)
-          <br />
-          2. Tap <span className="text-[#FF00FF]">"Open in Chrome/Safari"</span>
-        </p>
-        <button 
-          onClick={() => {
-            navigator.clipboard.writeText(window.location.href);
-            alert("Link Copied! Paste it into Chrome or Safari.");
-          }}
-          className="w-full bg-[#FF00FF] border-4 border-black py-4 text-2xl font-black uppercase shadow-[6px_6px_0px_#000]"
-        >
-          COPY LINK 🔗
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// 3. Regular Game Content
-return (
-  <div className="min-h-screen bg-[#FFFF00] ...">
-    {/* Your normal landing/recording screens here */}
-    
-    {/* Keep the debug tag for now */}
-    <div className="fixed bottom-0 left-0 text-[8px] bg-white opacity-20">
-      UA: {navigator.userAgent.slice(0, 30)}...
-    </div>
-  </div>
-);
 
 // NEW: If we are on Insta, stop here. Don't even load the landing screen logic.
 if (isIAB) {
@@ -443,7 +390,7 @@ if (isIAB) {
   return (
     <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black overflow-hidden select-none">
       <div className="fixed bottom-0 left-0 text-[10px] bg-white z-[5000]">
- DEBUG: {isIAB ? "INSTA DETECTED" : "0"}
+ DEBUG: {isIAB ? "INSTA DETECTED" : "REGULAR BROWSER"}
 </div>
       {/* ERROR OVERLAY */}
       {error && (
@@ -551,7 +498,7 @@ if (isIAB) {
             {card === 0 && (
               <div className="animate-in fade-in slide-in-from-bottom-4 flex-1">
                 <h2 className="text-3xl font-black mb-8 italic underline uppercase decoration-4 text-center">Accent DNA</h2>
-                {result!.heritage.map((h, i) => (
+                {result.heritage.map((h, i) => (
                   <Meter key={i} label={h.country} percent={h.percentage} color={i===0?'bg-[#00FF00]':i===1?'bg-[#FF00FF]':'bg-[#00FFFF]'} />
                 ))}
               </div>
@@ -559,9 +506,9 @@ if (isIAB) {
 
             {card === 1 && (
               <div className="animate-in fade-in slide-in-from-right-8 h-full flex flex-col justify-center flex-1">
-                <p className="text-[25px] font-black uppercase opacity-30 mb-4">Transcription: "{result!.transcription}"</p>
+                <p className="text-[25px] font-black uppercase opacity-30 mb-4">Transcription: "{result.transcription}"</p>
                 <p className="text-3xl font-black italic text-[#FF00FF] uppercase leading-tight underline decoration-black underline-offset-4">
-                  {result!.roast}
+                  {result.roast}
                 </p>
               </div>
             )}
@@ -572,14 +519,14 @@ if (isIAB) {
                   <h1 className="text-5xl font-black italic uppercase">ROASTED.</h1>
                   <div className="bg-white text-black p-4 border-4 border-black rotate-2 text-center shadow-[4px_4px_0px_#000]">
                     <p className="text-[10px] font-black uppercase opacity-40">Primary Origin:</p>
-                    <p className="text-3xl font-black uppercase leading-none">{result!.heritage[0].country}</p>
+                    <p className="text-3xl font-black uppercase leading-none">{result.heritage[0].country}</p>
                   </div>
                   <div className="space-y-4">
                     <div className="bg-black text-[#00FF00] p-3 font-bold italic border-2 border-white">
-                      "{result!.celebrity}"
+                      "{result.celebrity}"
                     </div>
                     <div className="bg-[#FFFF00] text-black p-2 text-center font-black text-xs border-2 border-black uppercase italic shadow-[3px_3px_0px_#000]">
-                      Status: {result!.badge}
+                      Status: {result.badge}
                     </div>
                   </div>
                 </div>
