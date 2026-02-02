@@ -83,6 +83,8 @@ const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
 };
 export default function AccentRoaster() {
   // --- STATE MANAGEMENT ---
+  const [isMuted, setIsMuted] = useState(false);
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
   const [isFooterOpen, setIsFooterOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -98,6 +100,29 @@ export default function AccentRoaster() {
   const chunksRef = useRef<Blob[]>([]);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const shareRef = useRef<HTMLDivElement>(null);
+  const speakSavage = (text: string) => {
+    if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) return;
+    
+    window.speechSynthesis.cancel(); // Kill any current yapping
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // --- THE "SAVAGE" VOICE PROFILE ---
+    utterance.rate = 0.85;  // Slow = Condescending
+    utterance.pitch = 0.1;  // Low = Deep & Hateful
+    utterance.volume = 1;
+
+    // Trigger state changes so the UI knows we're talking
+    utterance.onstart = () => setIsAiSpeaking(true);
+    utterance.onend = () => setIsAiSpeaking(false);
+    utterance.onerror = () => setIsAiSpeaking(false);
+
+    const voices = window.speechSynthesis.getVoices();
+    // Try to find a British/UK voice because they sound more judgmental
+    const bestVoice = voices.find(v => v.lang.includes('en-GB') || v.name.includes('Google')) || voices[0];
+    utterance.voice = bestVoice;
+
+    window.speechSynthesis.speak(utterance);
+  };
 
   // --- LIFECYCLE: MOUNT ---
   useEffect(() => { 
@@ -117,6 +142,23 @@ export default function AccentRoaster() {
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [step, timer]);
+useEffect(() => {
+    // 1. WELCOME ON RECORDING SCREEN (STEP 2)
+    if (step === 'recording') {
+      const welcomes = [
+        "oh here we go again, another loser.",
+        "oh another arsehole wants to know his accent.",
+        "same shit, different voice. go ahead, impress me.",
+        "the mic is on. try not to choke on your own aura."
+      ];
+      speakSavage(welcomes[Math.floor(Math.random() * welcomes.length)]);
+    }
+
+    // 2. ROAST ON THE 2nd CARD (RESULTS SUB-STEP 1 / CARD 1)
+    if (step === 'results' && card === 1 && result?.roast) {
+      speakSavage(result.roast);
+    }
+  }, [step, card, result]);
 
   // --- CORE LOGIC: API & RECORDING ---
   const resetGame = () => {
@@ -225,8 +267,30 @@ export default function AccentRoaster() {
   if (!mounted) return <div className="min-h-screen bg-[#FFFF00]" />;
 
   return (
+    
     <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black overflow-hidden select-none">
-      
+      {/* --- MUTE BUTTON --- */}
+      <button 
+        onClick={() => {
+          setIsMuted(!isMuted);
+          if (!isMuted) window.speechSynthesis.cancel();
+        }}
+        className="fixed top-6 right-6 z-50 bg-black text-white border-2 border-black px-4 py-2 font-black text-[10px] uppercase shadow-[4px_4px_0px_#FF00FF] active:shadow-none transition-all"
+      >
+        {isMuted ? "🔇 SOUND OFF" : "🔊 SOUND ON"}
+      </button>
+
+      {/* --- AI SPEAKING INDICATOR --- */}
+      {isAiSpeaking && (
+        <div className="fixed top-20 right-6 animate-bounce z-50">
+          <div className="bg-[#00FF00] text-black border-2 border-black px-3 py-1 font-black text-[8px] uppercase shadow-[3px_3px_0px_#000]">
+            AI IS YAPPING...
+          </div>
+        </div>
+      )}
+
+      {/* ... rest of your landing/recording/results screens ... */}
+
       {/* --- 1. LANDING SCREEN --- */}
       {step === 'landing' && (
         <div className="text-center w-full max-w-sm animate-in fade-in duration-500">
