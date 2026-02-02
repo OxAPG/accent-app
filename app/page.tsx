@@ -110,51 +110,21 @@ export default function AccentRoaster() {
   const chunksRef = useRef<Blob[]>([]);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const shareRef = useRef<HTMLDivElement>(null);
-  const speakSavage = (text: string, onFinish?: () => void) => {
-  if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) {
-    if (onFinish) onFinish();
-    return;
-  }
+  const speakSavage = (text: string) => {
+  if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) return;
   
   window.speechSynthesis.cancel(); 
   const utterance = new SpeechSynthesisUtterance(text);
-  
-  // --- THE "UNIVERSAL BULLY" SETTINGS ---
-  utterance.rate = 1.1;  // Slightly fast = impatient
-  utterance.pitch = 1.0; // Neutral pitch is safest across all hardware
-  utterance.volume = 1.0;
+  utterance.rate = 1.1;
+  utterance.pitch = 1.0;
 
   const voices = window.speechSynthesis.getVoices();
-  
-  /**
-   * THE RANKING SYSTEM:
-   * 1. 'en-GB' (British) - Higher "disrespect" factor.
-   * 2. 'en-IN' (Indian-English) - Clearer for the local market.
-   * 3. 'en-US' (American) - The classic "Mean Girl" vibe.
-   */
-  const targetVoice = 
-    // High-quality British (Google/Samsung Natural)
-    voices.find(v => (v.lang.startsWith('en-GB')) && (v.name.includes('Natural') || v.name.includes('Google'))) ||
-    // High-quality Indian-English (Clear & Sharp)
-    voices.find(v => (v.lang.startsWith('en-IN')) && v.name.includes('Google')) ||
-    // High-quality US (Sarcastic)
-    voices.find(v => (v.lang.startsWith('en-US')) && v.name.includes('Natural')) ||
-    // Fallback to any English
-    voices.find(v => v.lang.startsWith('en')) ||
-    voices[0];
-
+  const targetVoice = voices.find(v => v.lang.includes('en-GB') || v.name.includes('Google')) || voices[0];
   utterance.voice = targetVoice;
 
-  utterance.onstart = () => {
-    setIsAiSpeaking(true);
-    // Haptic Feedback: Short "Pulse" on start (Android standard)
-    if (navigator.vibrate) navigator.vibrate(50);
-  };
-
-  utterance.onend = () => {
-    setIsAiSpeaking(false);
-    if (onFinish) onFinish();
-  };
+  utterance.onstart = () => setIsAiSpeaking(true);
+  utterance.onend = () => setIsAiSpeaking(false);
+  utterance.onerror = () => setIsAiSpeaking(false);
 
   window.speechSynthesis.speak(utterance);
 };
@@ -229,36 +199,35 @@ useEffect(() => {
   };
 
   const startRecording = async () => {
-    try {
-      setError(null);
-      // 1. CAPTURE MIC IMMEDIATELY (Android Gesture Rule)
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setActiveStream(stream);
+  try {
+    setError(null);
+    // 1. INSTANT UI CHANGE (Prevents the "stuck" feeling)
+    setStep('recording');
+    setTimer(8); // 3 seconds for AI intro + 5 seconds for user speech
 
-      // 2. PRE-PREPARE RECORDER (BUT DON'T START)
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      chunksRef.current = [];
-      mediaRecorder.ondataavailable = (e) => { 
-        if (e.data.size > 0) chunksRef.current.push(e.data); 
-      };
-      mediaRecorder.onstop = handleRecordingStop;
+    // 2. CAPTURE MIC IMMEDIATELY
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    setActiveStream(stream);
 
-      // 3. TRIGGER AI WELCOME
-      const randomText = welcomes[Math.floor(Math.random() * welcomes.length)];
-      
-      // 4. CALLBACK: START RECORDING ONLY AFTER AI FINISHES
-      speakSavage(randomText, () => {
-        mediaRecorder.start();
-        setStep('recording');
-        setTimer(5);
-      });
+    // 3. TRIGGER AI WELCOME (Fire and forget - no waiting!)
+    const randomText = welcomes[Math.floor(Math.random() * welcomes.length)];
+    speakSavage(randomText);
 
-    } catch (err) {
-      setError("Mic access denied. Enable it to be roasted.");
-      setStep('landing');
-    }
-  };
+    // 4. START MEDIA RECORDER IMMEDIATELY
+    const mediaRecorder = new MediaRecorder(stream);
+    mediaRecorderRef.current = mediaRecorder;
+    chunksRef.current = [];
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+    mediaRecorder.onstop = handleRecordingStop;
+    
+    mediaRecorder.start();
+
+  } catch (err) {
+    console.error("Mic Error:", err);
+    setError("Mic access denied. Resetting...");
+    setStep('landing');
+  }
+};
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
