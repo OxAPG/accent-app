@@ -74,7 +74,7 @@ const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
       analyserRef.current.fftSize = 64; 
       source.connect(analyserRef.current);
       const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-      
+      const [isIAB, setIsIAB] = useState(false);
       const update = () => {
         if (!analyserRef.current) return;
         analyserRef.current.getByteFrequencyData(dataArray);
@@ -109,6 +109,7 @@ export default function AccentRoaster() {
   const [result, setResult] = useState<RoastResult | null>(null);
   const [card, setCard] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [isIAB, setIsIAB] = useState(false);
 
   // --- REFS ---
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -180,6 +181,9 @@ export default function AccentRoaster() {
     if (window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = primeVoices;
     }
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || navigator.vendor : '';
+    const isInstagram = /Instagram|FBAN|FBAV/i.test(ua);
+    setIsIAB(isInstagram);
     setMounted(true);
     setChallenge(CHALLENGES[Math.floor(Math.random() * CHALLENGES.length)]);
   }, []);
@@ -328,7 +332,11 @@ export default function AccentRoaster() {
 
   return (
     <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black overflow-hidden select-none">
-      
+      {isIAB && step === 'landing' && (
+  <div className="fixed top-0 left-0 right-0 bg-black text-[#00FF00] p-4 z-[3000] font-black text-center text-[10px] uppercase border-b-4 border-[#00FF00] animate-pulse">
+    ⚠️ INSTAGRAM BLOCKS MIC/VOICE. TAP (...) AND "OPEN IN SYSTEM BROWSER" TO PLAY.
+  </div>
+)}
       {/* ERROR OVERLAY */}
       {error && (
         <div className="fixed top-0 left-0 right-0 bg-red-600 text-white p-4 z-[1000] font-black text-center text-xs uppercase border-b-4 border-black animate-bounce">
