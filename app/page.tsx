@@ -56,7 +56,7 @@ const Meter = ({ label, percent, color }: { label: string; percent: number; colo
   </div>
 );
 
-// --- LIVE AUDIO VISUALIZER ---
+// --- AUDIO VISUALIZER ---
 const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
   const [bars, setBars] = useState(new Array(15).fill(20));
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -105,7 +105,7 @@ export default function AccentRoaster() {
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState<'landing' | 'recording' | 'analyzing' | 'results'>('landing');
   const [challenge, setChallenge] = useState("");
-  const [timer, setTimer] = useState(10); // Hard Reset to 10s
+  const [timer, setTimer] = useState(10); 
   const [result, setResult] = useState<RoastResult | null>(null);
   const [card, setCard] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +117,7 @@ export default function AccentRoaster() {
   const shareRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number>(0);
 
-  // --- DEFENSIVE SPEECH ENGINE ---
+  // --- SPEECH ENGINE ---
   const speakSavage = (text: string, onFinish?: () => void) => {
     if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) {
       if (onFinish) onFinish();
@@ -162,8 +162,7 @@ export default function AccentRoaster() {
         }
       };
 
-      utterance.onerror = (e) => {
-        console.error("Speech Error", e);
+      utterance.onerror = () => {
         if (forceFinishTimeout) clearTimeout(forceFinishTimeout);
         setIsAiSpeaking(false);
         if (onFinish) onFinish();
@@ -171,7 +170,6 @@ export default function AccentRoaster() {
 
       window.speechSynthesis.speak(utterance);
     } catch (err) {
-      console.error("Critical Speech Fail", err);
       if (onFinish) onFinish();
     }
   };
@@ -182,10 +180,7 @@ export default function AccentRoaster() {
     if (window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = primeVoices;
     }
-  }, []);
-
-  useEffect(() => { 
-    setMounted(true); 
+    setMounted(true);
     setChallenge(CHALLENGES[Math.floor(Math.random() * CHALLENGES.length)]);
   }, []);
 
@@ -207,13 +202,13 @@ export default function AccentRoaster() {
     }
   }, [step, card, result]);
 
-  // --- CORE LOGIC ---
+  // --- GAME LOGIC ---
   const resetGame = () => {
     setChallenge(CHALLENGES[Math.floor(Math.random() * CHALLENGES.length)]);
     setResult(null);
     setCard(0);
     setError(null);
-    setTimer(5);
+    setTimer(10);
     setStep('landing');
   };
 
@@ -221,40 +216,29 @@ export default function AccentRoaster() {
     try {
       setError(null);
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Your browser blocks microphone access.");
+        throw new Error("Mic blocked. Check settings.");
       }
-
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setActiveStream(stream);
 
       const randomText = welcomes[Math.floor(Math.random() * welcomes.length)];
       
       speakSavage(randomText, () => {
-        try {
-          if (typeof MediaRecorder === 'undefined') {
-            throw new Error("MediaRecorder not supported on this device.");
-          }
-
-          const mediaRecorder = new MediaRecorder(stream);
-          mediaRecorderRef.current = mediaRecorder;
-          chunksRef.current = [];
-          mediaRecorder.ondataavailable = (e) => { 
-            if (e.data.size > 0) chunksRef.current.push(e.data); 
-          };
-          mediaRecorder.onstop = handleRecordingStop;
-          
-          startTimeRef.current = Date.now();
-          mediaRecorder.start();
-          setStep('recording');
-          setTimer(10);
-        } catch (innerErr: any) {
-          setError(innerErr.message);
-          setStep('landing');
-        }
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        chunksRef.current = [];
+        mediaRecorder.ondataavailable = (e) => { 
+          if (e.data.size > 0) chunksRef.current.push(e.data); 
+        };
+        mediaRecorder.onstop = handleRecordingStop;
+        
+        startTimeRef.current = Date.now();
+        mediaRecorder.start();
+        setStep('recording');
+        setTimer(10);
       });
-
-    } catch (err: any) {
-      setError(err.message || "Mic Error. Check permissions.");
+    } catch (err) {
+      setError("Mic access denied.");
       setStep('landing');
     }
   };
@@ -268,25 +252,27 @@ export default function AccentRoaster() {
   };
 
   const handleRecordingStop = async () => {
-    setStep('analyzing');
     const duration = (Date.now() - startTimeRef.current) / 1000;
 
-    // WHISPER SILENCE GUARD (Kills the Japanese Bug)
+    // --- ABSOLUTE GATEKEEPER ---
+    // 1. Duration Check
     if (chunksRef.current.length === 0 || duration < 2) {
-      setError("Recording too short. Speak for at least 2 seconds!");
+      setError("Do you want me to roast the accent of the air? Speak something!");
       setStep('landing');
-      return;
+      return; // STOP EXECUTION
     }
 
     const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
-    
-    // Check if audio file meets minimum size for Whisper to work accurately
-    if (audioBlob.size < 20000) {
-      setError("I heard silence. Use your voice, not your thoughts.");
+
+    // 2. Silence/Size Check (Raised to 30KB to ignore mic static)
+    if (audioBlob.size < 30000) {
+      setError("Are you mute? Speak up or go home, NPC.");
       setStep('landing');
-      return;
+      return; // STOP EXECUTION
     }
 
+    // --- ONLY PROCEED IF GUARDS ARE PASSED ---
+    setStep('analyzing');
     const reader = new FileReader();
     reader.readAsDataURL(audioBlob);
     reader.onloadend = async () => {
@@ -302,29 +288,24 @@ export default function AccentRoaster() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ audio: base64Audio, challengeText: challenge })
       });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Server failed to process roast.");
-      }
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Server failed.");
       setResult(data);
       setStep('results');
     } catch (err: any) {
-      setError(err.message || "Connection Error.");
+      setError(err.message || "AI Error. The roast was too hot.");
       setStep('landing');
     }
   };
 
-  // --- SOCIALS ---
+  // --- SOCIAL HELPERS ---
   const downloadCard = async () => {
     if (!shareRef.current) return;
-    try {
-      const dataUrl = await toPng(shareRef.current, { cacheBust: true });
-      const link = document.createElement('a');
-      link.download = 'roast.png';
-      link.href = dataUrl;
-      link.click();
-    } catch (e) { setError("Save failed. Try a screenshot!"); }
+    const dataUrl = await toPng(shareRef.current, { cacheBust: true });
+    const link = document.createElement('a');
+    link.download = 'roast.png';
+    link.href = dataUrl;
+    link.click();
   };
 
   const shareCard = async () => {
@@ -334,7 +315,11 @@ export default function AccentRoaster() {
       if (!blob) return;
       const file = new File([blob], 'roast.png', { type: 'image/png' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Accent Roast' });
+        await navigator.share({
+          files: [file],
+          title: 'Accent Roast',
+          text: `The AI says I sound like ${result?.celebrity}. 💀 #AccentRoaster`,
+        });
       }
     } catch (err) { console.error("Sharing failed", err); }
   };
@@ -353,8 +338,11 @@ export default function AccentRoaster() {
 
       {/* MUTE BUTTON */}
       <button 
-        onClick={() => { setIsMuted(!isMuted); if (!isMuted) window.speechSynthesis.cancel(); }}
-        className="fixed top-6 right-6 z-50 bg-black text-white border-2 border-black px-4 py-2 font-black text-[10px] uppercase shadow-[4px_4px_0px_#FF00FF] transition-all"
+        onClick={() => {
+          setIsMuted(!isMuted);
+          if (!isMuted) window.speechSynthesis.cancel();
+        }}
+        className="fixed top-6 right-6 z-50 bg-black text-white border-2 border-black px-4 py-2 font-black text-[10px] uppercase shadow-[4px_4px_0px_#FF00FF] active:shadow-none transition-all"
       >
         {isMuted ? "🔇 SOUND OFF" : "🔊 SOUND ON"}
       </button>
@@ -368,18 +356,20 @@ export default function AccentRoaster() {
         </div>
       )}
 
-      {/* 1. LANDING SCREEN */}
+      {/* --- 1. LANDING SCREEN --- */}
       {step === 'landing' && (
         <div className="text-center w-full max-w-sm">
           <h1 className={`text-5xl font-black mb-8 uppercase italic -rotate-2 drop-shadow-[4px_4px_0px_#FF00FF] transition-all duration-300 ${isAiSpeaking ? 'text-red-600 scale-105' : ''}`}>
             {isAiSpeaking ? "LISTEN." : "Accent Roaster"}
           </h1>
+          
           <div className="bg-white border-4 border-black p-6 mb-8 shadow-[8px_8px_0px_#000] text-left">
             <p className="text-[10px] font-black uppercase opacity-40 mb-2">The Mission:</p>
             <p className="text-xl font-bold italic leading-tight">
               {isAiSpeaking ? "Shhh. The AI has thoughts..." : `"${challenge}"`}
             </p>
           </div>
+
           <button 
             onClick={startRecording}
             disabled={isAiSpeaking}
@@ -392,7 +382,7 @@ export default function AccentRoaster() {
         </div>
       )}
 
-      {/* 2. RECORDING SCREEN (WITH MANUAL DONE) */}
+      {/* --- 2. RECORDING SCREEN --- */}
       {step === 'recording' && (
         <div className="text-center w-full max-w-sm animate-in zoom-in-95 duration-300">
           <div className="bg-white border-4 border-black p-6 mb-4 shadow-[12px_12px_0px_#000] relative">
@@ -411,11 +401,11 @@ export default function AccentRoaster() {
             DONE ⏹️
           </button>
 
-          <p className="text-[10px] font-black mt-8 uppercase tracking-[0.2em] animate-pulse text-center">SPEAK NOW! MINIMUM 2 SECS.</p>
+          <p className="text-[10px] font-black mt-8 uppercase tracking-[0.2em] animate-pulse text-center">SPEAK UP! I CAN'T HEAR COWARDS.</p>
         </div>
       )}
 
-      {/* 3. ANALYZING SCREEN */}
+      {/* --- 3. ANALYZING SCREEN --- */}
       {step === 'analyzing' && (
         <div className="text-center">
           <div className="w-20 h-20 border-8 border-black border-t-[#FF00FF] rounded-full animate-spin mx-auto mb-8"></div>
@@ -424,10 +414,11 @@ export default function AccentRoaster() {
         </div>
       )}
 
-      {/* 4. RESULTS CAROUSEL */}
+      {/* --- 4. RESULTS --- */}
       {step === 'results' && result && (
         <div className="w-full max-w-sm flex flex-col items-center animate-in slide-in-from-bottom-12 duration-500">
           <div className="bg-white border-4 border-black p-6 w-full shadow-[12px_12px_0px_#000] mb-8 min-h-[460px] flex flex-col">
+            
             {card === 0 && (
               <div className="animate-in fade-in slide-in-from-bottom-4 flex-1">
                 <h2 className="text-3xl font-black mb-8 italic underline uppercase decoration-4 text-center">Accent DNA</h2>
@@ -436,6 +427,7 @@ export default function AccentRoaster() {
                 ))}
               </div>
             )}
+
             {card === 1 && (
               <div className="animate-in fade-in slide-in-from-right-8 h-full flex flex-col justify-center flex-1">
                 <p className="text-[25px] font-black uppercase opacity-30 mb-4">Transcription: "{result.transcription}"</p>
@@ -444,6 +436,7 @@ export default function AccentRoaster() {
                 </p>
               </div>
             )}
+
             {card === 2 && (
               <div className="flex flex-col h-full animate-in zoom-in-95 duration-300">
                 <div ref={shareRef} className="bg-[#FF00FF] border-4 border-black p-6 flex flex-col justify-between text-white h-[400px] shadow-[8px_8px_0px_#000]">
@@ -453,8 +446,12 @@ export default function AccentRoaster() {
                     <p className="text-3xl font-black uppercase leading-none">{result.heritage[0].country}</p>
                   </div>
                   <div className="space-y-4">
-                    <div className="bg-black text-[#00FF00] p-3 font-bold italic border-2 border-white">"{result.celebrity}"</div>
-                    <div className="bg-[#FFFF00] text-black p-2 text-center font-black text-xs border-2 border-black uppercase italic shadow-[3px_3px_0px_#000]">Status: {result.badge}</div>
+                    <div className="bg-black text-[#00FF00] p-3 font-bold italic border-2 border-white">
+                      "{result.celebrity}"
+                    </div>
+                    <div className="bg-[#FFFF00] text-black p-2 text-center font-black text-xs border-2 border-black uppercase italic shadow-[3px_3px_0px_#000]">
+                      Status: {result.badge}
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-6">
@@ -464,6 +461,7 @@ export default function AccentRoaster() {
               </div>
             )}
           </div>
+          
           <button 
             onClick={() => card < 2 ? setCard(c => c + 1) : resetGame()} 
             className="w-full bg-black text-white py-5 text-2xl font-black uppercase border-4 border-black shadow-[6px_6px_0px_#FF00FF] active:translate-y-1 transition-all"
@@ -474,7 +472,13 @@ export default function AccentRoaster() {
       )}
 
       {/* LEGAL DRAWER */}
-      <button onClick={() => setIsFooterOpen(true)} className="fixed bottom-4 right-4 text-[8px] font-black uppercase opacity-20 hover:opacity-100 underline z-40">[ Legal & Privacy ]</button>
+      <button 
+        onClick={() => setIsFooterOpen(true)}
+        className="fixed bottom-4 right-4 text-[8px] font-black uppercase opacity-20 hover:opacity-100 underline z-40"
+      >
+        [ Legal & Privacy ]
+      </button>
+
       {isFooterOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 backdrop-blur-sm">
           <div className="absolute inset-0" onClick={() => setIsFooterOpen(false)} />
