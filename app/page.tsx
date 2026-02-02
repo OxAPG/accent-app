@@ -108,7 +108,7 @@ export default function AccentRoaster() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const shareRef = useRef<HTMLDivElement>(null);
 
-  // --- THE MASTER VOICE ENGINE (WITH SAFETY TIMEOUT) ---
+  // --- THE MASTER VOICE ENGINE ---
   const speakSavage = (text: string, onFinish?: () => void) => {
     if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) {
       if (onFinish) onFinish();
@@ -124,12 +124,17 @@ export default function AccentRoaster() {
     const targetVoice = voices.find(v => v.lang.startsWith('en-GB') || v.name.includes('Google')) || voices[0];
     utterance.voice = targetVoice;
 
-    // Safety Net: If AI yaps for more than 4 seconds, force start anyway
-    const forceFinishTimeout = setTimeout(() => {
-      window.speechSynthesis.cancel();
-      setIsAiSpeaking(false);
-      if (onFinish) onFinish();
-    }, 4000);
+    // --- FIX: ONLY APPLY TIMEOUT FOR NAVIGATION (WELCOME) ---
+    let forceFinishTimeout: NodeJS.Timeout | null = null;
+    
+    // Only if we are on the landing screen waiting to move to recording
+    if (onFinish && step === 'landing') {
+      forceFinishTimeout = setTimeout(() => {
+        window.speechSynthesis.cancel();
+        setIsAiSpeaking(false);
+        if (onFinish) onFinish();
+      }, 5000); // Increased to 5s just in case
+    }
 
     utterance.onstart = () => {
       setIsAiSpeaking(true);
@@ -137,13 +142,13 @@ export default function AccentRoaster() {
     };
 
     utterance.onend = () => {
-      clearTimeout(forceFinishTimeout);
+      if (forceFinishTimeout) clearTimeout(forceFinishTimeout);
       setIsAiSpeaking(false);
       if (onFinish) onFinish();
     };
 
     utterance.onerror = () => {
-      clearTimeout(forceFinishTimeout);
+      if (forceFinishTimeout) clearTimeout(forceFinishTimeout);
       setIsAiSpeaking(false);
       if (onFinish) onFinish();
     };
@@ -176,6 +181,7 @@ export default function AccentRoaster() {
   }, [step, timer]);
 
   useEffect(() => {
+    // Roast Trigger: No callback needed, let it speak full length
     if (step === 'results' && card === 1 && result?.roast) {
       speakSavage(result.roast);
     }
@@ -190,19 +196,16 @@ export default function AccentRoaster() {
     setStep('landing');
   };
 
-  // --- START RECORDING: THE PRE-FLIGHT INTRO ---
   const startRecording = async () => {
     try {
       setError(null);
-      // 1. GET MIC PERMISSION IMMEDIATELY (Android Rule)
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setActiveStream(stream);
 
-      // 2. TRIGGER AI ROAST ON LANDING SCREEN
       const randomText = welcomes[Math.floor(Math.random() * welcomes.length)];
       
+      // Move to recording screen ONLY after welcome finishes
       speakSavage(randomText, () => {
-        // 3. ONLY ONCE AI FINISHES: SWITCH TO RECORDING SCREEN
         const mediaRecorder = new MediaRecorder(stream);
         mediaRecorderRef.current = mediaRecorder;
         chunksRef.current = [];
@@ -289,14 +292,12 @@ export default function AccentRoaster() {
   return (
     <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black overflow-hidden select-none">
       
-      {/* ERROR MESSAGE */}
       {error && (
         <div className="fixed top-4 left-4 right-4 bg-red-600 text-white p-3 border-4 border-black font-black z-[100] text-xs shadow-[4px_4px_0px_#000]">
           {error}
         </div>
       )}
 
-      {/* MUTE BUTTON */}
       <button 
         onClick={() => { setIsMuted(!isMuted); if (!isMuted) window.speechSynthesis.cancel(); }}
         className="fixed top-6 right-6 z-50 bg-black text-white border-2 border-black px-4 py-2 font-black text-[10px] uppercase shadow-[4px_4px_0px_#FF00FF] active:shadow-none transition-all"
@@ -304,7 +305,6 @@ export default function AccentRoaster() {
         {isMuted ? "🔇 SOUND OFF" : "🔊 SOUND ON"}
       </button>
 
-      {/* AI SPEAKING BADGE */}
       {isAiSpeaking && (
         <div className="fixed top-20 right-6 animate-bounce z-50">
           <div className="bg-[#00FF00] text-black border-2 border-black px-3 py-1 font-black text-[8px] uppercase shadow-[3px_3px_0px_#000]">
@@ -313,7 +313,7 @@ export default function AccentRoaster() {
         </div>
       )}
 
-      {/* 1. LANDING SCREEN */}
+      {/* --- 1. LANDING SCREEN --- */}
       {step === 'landing' && (
         <div className="text-center w-full max-w-sm">
           <h1 className={`text-5xl font-black mb-8 uppercase italic -rotate-2 drop-shadow-[4px_4px_0px_#FF00FF] transition-all duration-300 ${isAiSpeaking ? 'text-red-600 scale-105' : ''}`}>
@@ -337,7 +337,7 @@ export default function AccentRoaster() {
         </div>
       )}
 
-      {/* 2. RECORDING SCREEN (SILENT) */}
+      {/* --- 2. RECORDING SCREEN --- */}
       {step === 'recording' && (
         <div className="text-center w-full max-w-sm animate-in zoom-in-95 duration-300">
           <div className="bg-white border-4 border-black p-6 mb-4 shadow-[12px_12px_0px_#000] relative">
@@ -352,7 +352,7 @@ export default function AccentRoaster() {
         </div>
       )}
 
-      {/* 3. ANALYZING SCREEN */}
+      {/* --- 3. ANALYZING SCREEN --- */}
       {step === 'analyzing' && (
         <div className="text-center">
           <div className="w-20 h-20 border-8 border-black border-t-[#FF00FF] rounded-full animate-spin mx-auto mb-8"></div>
@@ -360,7 +360,7 @@ export default function AccentRoaster() {
         </div>
       )}
 
-      {/* 4. RESULTS */}
+      {/* --- 4. RESULTS --- */}
       {step === 'results' && result && (
         <div className="w-full max-w-sm flex flex-col items-center animate-in slide-in-from-bottom-12 duration-500">
           <div className="bg-white border-4 border-black p-6 w-full shadow-[12px_12px_0px_#000] mb-8 min-h-[460px] flex flex-col">
@@ -384,9 +384,9 @@ export default function AccentRoaster() {
               <div className="flex flex-col h-full animate-in zoom-in-95 duration-300">
                 <div ref={shareRef} className="bg-[#FF00FF] border-4 border-black p-6 flex flex-col justify-between text-white h-[400px] shadow-[8px_8px_0px_#000]">
                   <h1 className="text-5xl font-black italic">ROASTED.</h1>
-                  <div className="bg-white text-black p-4 border-4 border-black rotate-2 text-center">
+                  <div className="bg-white text-black p-4 border-4 border-black rotate-2 text-center shadow-[4px_4px_0px_#000]">
                     <p className="text-[10px] font-black uppercase opacity-40">Primary Origin:</p>
-                    <p className="text-3xl font-black uppercase">{result.heritage[0].country}</p>
+                    <p className="text-3xl font-black uppercase leading-none">{result.heritage[0].country}</p>
                   </div>
                   <div className="space-y-4">
                     <div className="bg-black text-[#00FF00] p-3 font-bold italic border-2 border-white">"{result.celebrity}"</div>
@@ -400,13 +400,13 @@ export default function AccentRoaster() {
               </div>
             )}
           </div>
-          <button onClick={() => card < 2 ? setCard(c => c + 1) : resetGame()} className="w-full bg-black text-white py-5 text-2xl font-black uppercase border-4 border-black shadow-[6px_6px_0px_#FF00FF] active:translate-y-1">
+          <button onClick={() => card < 2 ? setCard(c => c + 1) : resetGame()} className="w-full bg-black text-white py-5 text-2xl font-black uppercase border-4 border-black shadow-[6px_6px_0px_#FF00FF] active:translate-y-1 transition-all">
             {card < 2 ? "NEXT CARD →" : "TRY AGAIN"}
           </button>
         </div>
       )}
 
-      {/* PRIVACY DRAWER */}
+      {/* LEGAL DRAWER */}
       <button onClick={() => setIsFooterOpen(true)} className="fixed bottom-4 right-4 text-[8px] font-black uppercase opacity-20 hover:opacity-100 underline decoration-1 z-40">[ Legal & Privacy ]</button>
       {isFooterOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 backdrop-blur-sm">
