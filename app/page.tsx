@@ -229,22 +229,36 @@ useEffect(() => {
   };
 
   const startRecording = async () => {
-  // 1. Get the random line
-  const welcomes = [
-    "oh look, another low-aura npc. press the button, loser.",
-    "you actually think you have a chance? cute.",
-    "same mid energy, different day. go ahead.",
-    "i’ve seen bots with more charisma than you.",
-    "don’t choke on your own ego. hit the button.",
-    "wow, the audacity to try to speak. record it, i dare you.",
-    "hurry up and record, i'm getting bored."
-  ];
-  const randomText = welcomes[Math.floor(Math.random() * welcomes.length)];
+    try {
+      setError(null);
+      // 1. CAPTURE MIC IMMEDIATELY (Android Gesture Rule)
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setActiveStream(stream);
 
-  // 2. Just call the Master Function
-  // We pass 'proceedToRecord' as the second argument (the callback)
-  speakSavage(randomText, proceedToRecord);
-};
+      // 2. PRE-PREPARE RECORDER (BUT DON'T START)
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+      mediaRecorder.ondataavailable = (e) => { 
+        if (e.data.size > 0) chunksRef.current.push(e.data); 
+      };
+      mediaRecorder.onstop = handleRecordingStop;
+
+      // 3. TRIGGER AI WELCOME
+      const randomText = welcomes[Math.floor(Math.random() * welcomes.length)];
+      
+      // 4. CALLBACK: START RECORDING ONLY AFTER AI FINISHES
+      speakSavage(randomText, () => {
+        mediaRecorder.start();
+        setStep('recording');
+        setTimer(5);
+      });
+
+    } catch (err) {
+      setError("Mic access denied. Enable it to be roasted.");
+      setStep('landing');
+    }
+  };
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
