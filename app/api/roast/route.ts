@@ -74,7 +74,7 @@ export async function POST(req: Request) {
                  - "your aura is in debt; even the bots are embarrassed to transcribe you."
               6. 2026 vocab,be creative with insults,use slang that is cutting edge and brutal.
               7. NO REPETITION: use fresh, creative hate every time.
-              8. CELEBRITY SCENARIO: make it a pathetic downfall,use real celebrity examples and dont yap make it one short painful sentence with not more than 6 words.
+              8. CELEBRITY SCENARIO: make it a pathetic downfall,use real celebrity examples and dont yap make it one short painful sentence with not VERY LONG.
               ### ROAST CONSTRAINTS:
               Length: Exactly 3 short sweet sentences.
               Format: A single paragraph. No rambling.

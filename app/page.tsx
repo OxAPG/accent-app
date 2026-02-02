@@ -40,7 +40,7 @@ const welcomes = [
   "are you lost? this isn't the 'mid-accent anonymous' meeting. hurry up and record."
 ];
 
-// --- REUSABLE METER COMPONENT ---
+// --- REUSABLE COMPONENTS ---
 const Meter = ({ label, percent, color }: { label: string; percent: number; color: string }) => (
   <div className="mb-4 w-full">
     <div className="flex justify-between font-black uppercase text-[10px] mb-1">
@@ -56,7 +56,6 @@ const Meter = ({ label, percent, color }: { label: string; percent: number; colo
   </div>
 );
 
-// --- AUDIO VISUALIZER (MOBILE OPTIMIZED) ---
 const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
   const [bars, setBars] = useState(new Array(15).fill(20));
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -66,19 +65,14 @@ const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
     if (!stream) return;
     try {
       const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContextClass) return;
       const ctx = new AudioContextClass();
       audioContextRef.current = ctx;
-
-      // Force wake up for mobile browsers
       if (ctx.state === 'suspended') ctx.resume();
-
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 64; 
       source.connect(analyser);
       analyserRef.current = analyser;
-
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       const update = () => {
         if (!analyserRef.current) return;
@@ -88,7 +82,7 @@ const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
         requestAnimationFrame(update);
       };
       update();
-    } catch (e) { console.error("Visualizer engine fail", e); }
+    } catch (e) { console.error("Visualizer Error", e); }
     return () => { audioContextRef.current?.close(); };
   }, [stream]);
 
@@ -101,8 +95,9 @@ const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
   );
 };
 
+// --- MAIN APPLICATION ---
 export default function AccentRoaster() {
-  // --- STATE MANAGEMENT ---
+  // --- STATE ---
   const [isMuted, setIsMuted] = useState(false);
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
@@ -123,73 +118,37 @@ export default function AccentRoaster() {
   const shareRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number>(0);
 
-  // --- NEW: PERSONALITY SPEECH ENGINE ---
+  // --- PERSONALITY SPEECH ENGINE ---
   const speakSavage = (text: string, onFinish?: () => void) => {
     if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) {
       if (onFinish) onFinish();
       return;
     }
+    window.speechSynthesis.cancel(); 
+    const utterance = new SpeechSynthesisUtterance(text);
     
-    try {
-      window.speechSynthesis.cancel(); 
-      const utterance = new SpeechSynthesisUtterance(text);
-      
-      // PERSONALITY HACK: Randomize tone and speed to sound "moody"
-      utterance.pitch = 0.8 + Math.random() * 0.4; // Ranges from deep to mocking
-      utterance.rate = 1.0 + Math.random() * 0.2;  // Slightly fast to sound impatient
+    // Personality: Moodier, varied pitch and slightly fast/impatient rate
+    utterance.rate = 1.05 + Math.random() * 0.15;
+    utterance.pitch = 0.85 + Math.random() * 0.3;
 
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length > 0) {
-        // Prefer "Google" or "UK" voices for that snobbish/judgmental accent
-        const targetVoice = 
-          voices.find(v => v.lang.startsWith('en-GB') && v.name.includes('Female')) || 
-          voices.find(v => v.lang.startsWith('en-GB')) || 
-          voices.find(v => v.name.includes('Google')) || 
-          voices[0];
-        utterance.voice = targetVoice;
-      }
+    const voices = window.speechSynthesis.getVoices();
+    const targetVoice = voices.find(v => v.lang.startsWith('en-GB') || v.name.includes('Google')) || voices[0];
+    if (targetVoice) utterance.voice = targetVoice;
 
-      let safetyTriggered = false;
-      const forceFinishTimeout = onFinish && step === 'landing' ? setTimeout(() => {
-        if (!safetyTriggered) {
-          safetyTriggered = true;
-          window.speechSynthesis.cancel();
-          setIsAiSpeaking(false);
-          onFinish();
-        }
-      }, 6000) : null;
-
-      utterance.onstart = () => {
-        setIsAiSpeaking(true);
-        if (navigator.vibrate) navigator.vibrate([30, 50, 30]); // Haptic "shiver"
-      };
-
-      utterance.onend = () => {
-        if (forceFinishTimeout) clearTimeout(forceFinishTimeout);
-        if (!safetyTriggered) {
-          safetyTriggered = true;
-          setIsAiSpeaking(false);
-          if (onFinish) onFinish();
-        }
-      };
-
-      utterance.onerror = () => {
-        if (forceFinishTimeout) clearTimeout(forceFinishTimeout);
-        setIsAiSpeaking(false);
-        if (onFinish) onFinish();
-      };
-
-      window.speechSynthesis.speak(utterance);
-    } catch (err) { if (onFinish) onFinish(); }
+    utterance.onstart = () => {
+      setIsAiSpeaking(true);
+      if (navigator.vibrate) navigator.vibrate([30, 50]);
+    };
+    utterance.onend = () => { setIsAiSpeaking(false); if (onFinish) onFinish(); };
+    utterance.onerror = () => { setIsAiSpeaking(false); if (onFinish) onFinish(); };
+    
+    window.speechSynthesis.speak(utterance);
   };
 
   // --- LIFECYCLE ---
   useEffect(() => {
-    // Detect Instagram/In-App Browsers (Nuclear Regex)
     const ua = navigator.userAgent || navigator.vendor || (window as any).opera;
-    const isMeta = /Instagram|FBAN|FBAV|Threads|Messenger/i.test(ua);
-    const isInstaWindow = !!(window as any).Instagram || !!(window as any)._instgrm;
-    setIsIAB(isMeta || isInstaWindow);
+    setIsIAB(/Instagram|FBAN|FBAV|Threads/i.test(ua));
 
     const primeVoices = () => { if (typeof window !== 'undefined') window.speechSynthesis.getVoices(); };
     primeVoices();
@@ -209,10 +168,11 @@ export default function AccentRoaster() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [step, timer]);
 
+  // Personality: The Result Roast logic
   useEffect(() => {
     if (step === 'results' && card === 1 && result?.roast) {
-      // Add a small "sigh" or pause personality before the results yap
-      setTimeout(() => speakSavage(result.roast), 500);
+      const personalityTimer = setTimeout(() => speakSavage(result.roast), 400);
+      return () => clearTimeout(personalityTimer);
     }
   }, [step, card, result]);
 
@@ -225,12 +185,8 @@ export default function AccentRoaster() {
   const startRecording = async () => {
     try {
       setError(null);
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Mic blocked. Open in System Browser.");
-      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setActiveStream(stream);
-
       const randomText = welcomes[Math.floor(Math.random() * welcomes.length)];
       
       speakSavage(randomText, () => {
@@ -244,7 +200,7 @@ export default function AccentRoaster() {
         setStep('recording');
         setTimer(10);
       });
-    } catch (err) { setError("Mic access denied."); setStep('landing'); }
+    } catch (err) { setError("Mic access denied. Real browsers only."); setStep('landing'); }
   };
 
   const stopRecording = () => {
@@ -257,21 +213,21 @@ export default function AccentRoaster() {
 
   const handleRecordingStop = async () => {
     const duration = (Date.now() - startTimeRef.current) / 1000;
-
-    // --- ABSOLUTE SILENCE FIREWALL ---
+    
+    // GUARD 1: Silence/Empty
     if (chunksRef.current.length === 0 || duration < 1.5) {
-      setError("I'm not roasting the silence. Speak something, coward!");
+      setError("Do you want me to roast the accent of the air? Speak something!");
       setStep('landing');
-      return; // STOP EXECUTION
+      return; 
     }
 
     const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
     
-    // Size check (35KB) to prevent Japanese/Silence hallucinations
-    if (audioBlob.size < 35000) {
-      setError("Do you want me to roast the accent of the air? Speak louder.");
+    // GUARD 2: Size (Raised to 20KB for strict filtering)
+    if (audioBlob.size < 20000) {
+      setError("Are you mute? Speak up or go home, NPC.");
       setStep('landing');
-      return; // STOP EXECUTION
+      return; 
     }
 
     setStep('analyzing');
@@ -292,16 +248,18 @@ export default function AccentRoaster() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setResult(data); setStep('results');
-    } catch (err: any) { setError("AI Error. Roast too hot."); setStep('landing'); }
+      setResult(data); 
+      setStep('results');
+    } catch (err: any) { setError("AI Server Crash. Roast too hot."); setStep('landing'); }
   };
 
-  // --- SHARING ---
   const downloadCard = async () => {
     if (!shareRef.current) return;
-    const dataUrl = await toPng(shareRef.current, { cacheBust: true });
-    const link = document.createElement('a');
-    link.download = 'roast.png'; link.href = dataUrl; link.click();
+    try {
+      const dataUrl = await toPng(shareRef.current, { cacheBust: true });
+      const link = document.createElement('a');
+      link.download = 'roast.png'; link.href = dataUrl; link.click();
+    } catch (e) { setError("Save failed. Try a screenshot!"); }
   };
 
   const shareCard = async () => {
@@ -316,44 +274,32 @@ export default function AccentRoaster() {
     } catch (err) { console.error(err); }
   };
 
-  // --- RENDERING GATE ---
   if (!mounted) return <div className="min-h-screen bg-[#FFFF00]" />;
 
-  // FIREWALL: INSTAGRAM GATE
-  if (isIAB) {
-    return (
-      <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black">
-        <div className="text-center w-full max-w-sm">
-          <h1 className="text-6xl font-black mb-8 uppercase italic -rotate-2 drop-shadow-[4px_4px_0px_#FF00FF]">STOP.</h1>
-          <div className="bg-black text-[#00FF00] border-4 border-black p-6 mb-8 shadow-[8px_8px_0px_#00FF00]">
-            <p className="text-xl font-black uppercase leading-tight">Instagram is sabotaging your microphone.</p>
-          </div>
-          <p className="font-bold mb-8 uppercase text-sm leading-relaxed">
-            To get roasted:
-            <br /><br />
-            1. Tap the <span className="bg-white px-2 text-black font-black">...</span> (top right)
-            <br />
-            2. Select <span className="text-[#FF00FF] font-black italic underline">"Open in Browser"</span>
-          </p>
-          <button 
-            onClick={() => { navigator.clipboard.writeText(window.location.href); alert("Link Copied! Paste it into Chrome/Safari."); }}
-            className="w-full bg-[#FF00FF] border-4 border-black py-4 text-2xl font-black uppercase shadow-[6px_6px_0px_#000] active:translate-y-1"
-          >
-            COPY LINK 🔗
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // --- REGULAR APPLICATION RETURN ---
   return (
     <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black overflow-hidden select-none">
       
+      {/* INSTA RISK POPUP */}
+      {isIAB && step === 'landing' && (
+        <div className="fixed inset-0 bg-black/90 z-[5000] flex items-center justify-center p-6">
+          <div className="bg-white border-4 border-black p-8 text-center shadow-[10px_10px_0px_#FF00FF] animate-in zoom-in duration-300">
+            <h2 className="text-3xl font-black uppercase mb-4 italic">INSTA DETECTED</h2>
+            <p className="font-bold mb-6 text-sm uppercase">Instagram kills microphones. Redirect to Chrome or Safari to play properly.</p>
+            <button 
+              onClick={() => { navigator.clipboard.writeText(window.location.href); alert("Link Copied! Now open Chrome."); }}
+              className="w-full bg-[#00FF00] border-4 border-black py-4 font-black uppercase shadow-[4px_4px_0px_#000] mb-4 active:translate-y-1"
+            >
+              COPY LINK 🔗
+            </button>
+            <button onClick={() => setIsIAB(false)} className="text-[10px] font-bold underline opacity-40 uppercase tracking-widest">I'LL RISK IT (MIGHT ERROR)</button>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="fixed top-0 left-0 right-0 bg-red-600 text-white p-4 z-[1000] font-black text-center text-xs uppercase border-b-4 border-black animate-bounce flex justify-between items-center">
           <span>⚠️ {error}</span>
-          <button onClick={() => setError(null)} className="bg-black text-white px-2 py-1 text-[8px]">[DISMISS]</button>
+          <button onClick={() => setError(null)} className="bg-black text-white px-2 py-1 text-[8px] uppercase">[Dismiss]</button>
         </div>
       )}
 
@@ -366,7 +312,7 @@ export default function AccentRoaster() {
 
       {isAiSpeaking && (
         <div className="fixed top-20 right-6 animate-pulse z-50">
-          <div className="bg-[#00FF00] text-black border-2 border-black px-3 py-1 font-black text-[8px] uppercase shadow-[3px_3px_0px_#000]">AI IS JUDGING...</div>
+          <div className="bg-[#00FF00] text-black border-2 border-black px-3 py-1 font-black text-[8px] uppercase shadow-[3px_3px_0px_#000]">AI IS YAPPING...</div>
         </div>
       )}
 
@@ -378,7 +324,7 @@ export default function AccentRoaster() {
           </h1>
           <div className="bg-white border-4 border-black p-6 mb-8 shadow-[8px_8px_0px_#000] text-left">
             <p className="text-[10px] font-black uppercase opacity-40 mb-2">The Mission:</p>
-            <p className="text-xl font-bold italic leading-tight">{isAiSpeaking ? "Shhh. AI has thoughts..." : `"${challenge}"`}</p>
+            <p className="text-xl font-bold italic leading-tight">{isAiSpeaking ? "Shhh. The AI has thoughts..." : `"${challenge}"`}</p>
           </div>
           <button 
             onClick={startRecording}
@@ -402,7 +348,7 @@ export default function AccentRoaster() {
             <div className="absolute -bottom-5 right-6 bg-[#FF00FF] text-black border-4 border-black px-4 py-2 font-black text-2xl shadow-[4px_4px_0px_#000]">{timer}s</div>
           </div>
           <button onClick={stopRecording} className="w-full mt-10 bg-[#00FF00] border-4 border-black py-4 text-3xl font-black uppercase shadow-[6px_6px_0px_#000] active:translate-y-1 hover:bg-red-500">DONE ⏹️</button>
-          <p className="text-[10px] font-black mt-8 uppercase tracking-[0.2em] animate-pulse text-center">SPEAK NOW! I'M RECORDING YOUR FAILURES.</p>
+          <p className="text-[10px] font-black mt-8 uppercase tracking-[0.2em] animate-pulse text-center">SPEAK NOW! I CAN'T HEAR COWARDS.</p>
         </div>
       )}
 
@@ -415,7 +361,7 @@ export default function AccentRoaster() {
         </div>
       )}
 
-      {/* --- SCREEN: RESULTS --- */}
+      {/* --- SCREEN: RESULTS CAROUSEL --- */}
       {step === 'results' && result && (
         <div className="w-full max-w-sm flex flex-col items-center animate-in slide-in-from-bottom-12 duration-500">
           <div className="bg-white border-4 border-black p-6 w-full shadow-[12px_12px_0px_#000] mb-8 min-h-[460px] flex flex-col">
@@ -426,7 +372,6 @@ export default function AccentRoaster() {
                 {result.heritage.map((h, i) => (
                   <Meter key={i} label={h.country} percent={h.percentage} color={i===0?'bg-[#00FF00]':i===1?'bg-[#FF00FF]':'bg-[#00FFFF]'} />
                 ))}
-                <p className="text-[10px] font-black uppercase opacity-30 mt-8 text-center">Calculated by Groq LPU Whisper V3</p>
               </div>
             )}
 
@@ -451,8 +396,8 @@ export default function AccentRoaster() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-6">
-                  <button onClick={downloadCard} className="bg-[#00FFFF] border-2 border-black p-3 font-black text-xs uppercase shadow-[4px_4px_0px_#000] active:translate-y-1 transition-all">SAVE 💾</button>
-                  <button onClick={shareCard} className="bg-[#00FF00] border-2 border-black p-3 font-black text-xs uppercase shadow-[4px_4px_0px_#000] active:translate-y-1 transition-all">SHARE 🚀</button>
+                  <button onClick={downloadCard} className="bg-[#00FFFF] border-2 border-black p-3 font-black text-xs uppercase shadow-[4px_4px_0px_#000] active:translate-y-1">SAVE 💾</button>
+                  <button onClick={shareCard} className="bg-[#00FF00] border-2 border-black p-3 font-black text-xs uppercase shadow-[4px_4px_0px_#000] active:translate-y-1">SHARE 🚀</button>
                 </div>
               </div>
             )}
@@ -460,7 +405,7 @@ export default function AccentRoaster() {
           
           <button 
             onClick={() => card < 2 ? setCard(c => c + 1) : resetGame()} 
-            className="w-full bg-black text-white py-5 text-2xl font-black uppercase border-4 border-black shadow-[6px_6px_0px_#FF00FF] active:translate-y-1"
+            className="w-full bg-black text-white py-5 text-2xl font-black uppercase border-4 border-black shadow-[6px_6px_0px_#FF00FF] active:translate-y-1 transition-all"
           >
             {card < 2 ? "NEXT CARD →" : "TRY AGAIN"}
           </button>
@@ -468,7 +413,13 @@ export default function AccentRoaster() {
       )}
 
       {/* --- DRAWER: LEGAL --- */}
-      <button onClick={() => setIsFooterOpen(true)} className="fixed bottom-4 right-4 text-[8px] font-black uppercase opacity-20 hover:opacity-100 underline z-40">[ Legal & Privacy ]</button>
+      <button 
+        onClick={() => setIsFooterOpen(true)}
+        className="fixed bottom-4 right-4 text-[8px] font-black uppercase opacity-20 hover:opacity-100 underline z-40"
+      >
+        [ Legal & Privacy ]
+      </button>
+
       {isFooterOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 backdrop-blur-sm">
           <div className="absolute inset-0" onClick={() => setIsFooterOpen(false)} />
