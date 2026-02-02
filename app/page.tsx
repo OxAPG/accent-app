@@ -110,7 +110,7 @@ export default function AccentRoaster() {
   const chunksRef = useRef<Blob[]>([]);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const shareRef = useRef<HTMLDivElement>(null);
-  const speakSavage = (text: string) => {
+  const speakSavage = (text: string, onEnd?: () => void) => {
     if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) return;
     
     window.speechSynthesis.cancel(); // Kill any current yapping
@@ -123,7 +123,10 @@ export default function AccentRoaster() {
 
     // Trigger state changes so the UI knows we're talking
     utterance.onstart = () => setIsAiSpeaking(true);
-    utterance.onend = () => setIsAiSpeaking(false);
+    utterance.onend = () => {
+      setIsAiSpeaking(false);
+      if (onEnd) onEnd();
+    };
     utterance.onerror = () => setIsAiSpeaking(false);
 
     const voices = window.speechSynthesis.getVoices();
@@ -193,32 +196,22 @@ useEffect(() => {
   };
 
   const startRecording = async () => {
-    // 1. Mute Check
-    if (isMuted) {
-      proceedToRecord();
-      return;
-    }
+  // 1. Get the random line
+  const welcomes = [
+    "oh look, another low-aura npc. press the button, loser.",
+    "you actually think you have a chance? cute.",
+    "same mid energy, different day. go ahead.",
+    "i’ve seen bots with more charisma than you.",
+    "don’t choke on your own ego. hit the button.",
+    "wow, the audacity to try to speak. record it, i dare you.",
+    "hurry up and record, i'm getting bored."
+  ];
+  const randomText = welcomes[Math.floor(Math.random() * welcomes.length)];
 
-    // 2. The 7 Sins of Disrespect
-    const text = welcomes[Math.floor(Math.random() * welcomes.length)];
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    // --- 2026 VOICE TUNING ---
-    utterance.rate = 1.05; // Fast enough to sound impatient
-    utterance.pitch = 1.0; 
-    const voices = window.speechSynthesis.getVoices();
-    // TARGET: High-quality English voice
-    utterance.voice = voices.find(v => v.name.includes('Google') || v.name.includes('UK')) || voices[0];
-
-    // Logic: Wait for the yap to finish before the 5s timer starts
-    utterance.onstart = () => setIsAiSpeaking(true);
-    utterance.onend = () => {
-      setIsAiSpeaking(false);
-      proceedToRecord(); 
-    };
-
-    window.speechSynthesis.speak(utterance);
-  };
+  // 2. Just call the Master Function
+  // We pass 'proceedToRecord' as the second argument (the callback)
+  speakSavage(randomText, proceedToRecord);
+};
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
