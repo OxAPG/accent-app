@@ -30,6 +30,16 @@ const CHALLENGES = [
   "I requested the window seat specifically so I could romanticize my life in peace."
 ];
 
+const welcomes = [
+  "oh look, another low-aura npc trying to beat the allegations. press the button, loser.",
+  "you actually think you have a chance? cute. click record so i can laugh at your life.",
+  "same mid energy, different day. go ahead, pollute my microphone with your accent.",
+  "i’ve seen bots with more charisma than you. press record before i get bored.",
+  "don’t choke on your own ego. or do. i actually don’t care. hit the button.",
+  "wow, the audacity to stand there with that fit and try to speak. record it, i dare you.",
+  "are you lost? this isn't the 'mid-accent anonymous' meeting. hurry up and record."
+];
+
 // --- REUSABLE METER COMPONENT ---
 const Meter = ({ label, percent, color }: { label: string; percent: number; color: string }) => (
   <div className="mb-4 w-full">
@@ -143,16 +153,6 @@ export default function AccentRoaster() {
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [step, timer]);
 useEffect(() => {
-    // 1. WELCOME ON RECORDING SCREEN (STEP 2)
-    if (step === 'recording') {
-      const welcomes = [
-        "oh here we go again, another loser.",
-        "oh another arsehole wants to know his accent.",
-        "same shit, different voice. go ahead, impress me.",
-        "the mic is on. try not to choke on your own aura."
-      ];
-      speakSavage(welcomes[Math.floor(Math.random() * welcomes.length)]);
-    }
 
     // 2. ROAST ON THE 2nd CARD (RESULTS SUB-STEP 1 / CARD 1)
     if (step === 'results' && card === 1 && result?.roast) {
@@ -170,7 +170,7 @@ useEffect(() => {
     setStep('landing');
   };
 
-  const startRecording = async () => {
+  const proceedToRecord = async () => {
     try {
       setError(null);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -190,6 +190,34 @@ useEffect(() => {
     } catch (err) {
       setError("Mic access denied. Enable your mic to start roasting.");
     }
+  };
+
+  const startRecording = async () => {
+    // 1. Mute Check
+    if (isMuted) {
+      proceedToRecord();
+      return;
+    }
+
+    // 2. The 7 Sins of Disrespect
+    const text = welcomes[Math.floor(Math.random() * welcomes.length)];
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // --- 2026 VOICE TUNING ---
+    utterance.rate = 1.05; // Fast enough to sound impatient
+    utterance.pitch = 1.0; 
+    const voices = window.speechSynthesis.getVoices();
+    // TARGET: High-quality English voice
+    utterance.voice = voices.find(v => v.name.includes('Google') || v.name.includes('UK')) || voices[0];
+
+    // Logic: Wait for the yap to finish before the 5s timer starts
+    utterance.onstart = () => setIsAiSpeaking(true);
+    utterance.onend = () => {
+      setIsAiSpeaking(false);
+      proceedToRecord(); 
+    };
+
+    window.speechSynthesis.speak(utterance);
   };
 
   const stopRecording = () => {
@@ -293,19 +321,27 @@ useEffect(() => {
 
       {/* --- 1. LANDING SCREEN --- */}
       {step === 'landing' && (
-        <div className="text-center w-full max-w-sm animate-in fade-in duration-500">
-          <h1 className="text-5xl font-black mb-8 uppercase italic -rotate-2 drop-shadow-[4px_4px_0px_#FF00FF]">Accent Roaster</h1>
+        <div className="text-center w-full max-w-sm">
+          <h1 className={`text-5xl font-black mb-8 uppercase italic -rotate-2 drop-shadow-[4px_4px_0px_#FF00FF] transition-all duration-300 ${isAiSpeaking ? 'scale-110 text-red-600' : ''}`}>
+            {isAiSpeaking ? "LISTEN." : "Accent Roaster"}
+          </h1>
+          
           <div className="bg-white border-4 border-black p-6 mb-8 shadow-[8px_8px_0px_#000] text-left">
-            <p className="text-[10px] font-black uppercase opacity-40 mb-2">Today's Challenge:</p>
-            <p className="text-xl font-bold italic leading-tight">"{challenge}"</p>
+            <p className="text-[10px] font-black uppercase opacity-40 mb-2">The Mission:</p>
+            <p className="text-xl font-bold italic leading-tight">
+              {isAiSpeaking ? "I'm talking. Shhh." : `"${challenge}"`}
+            </p>
           </div>
+
           <button 
             onClick={startRecording}
-            className="w-full bg-[#FF00FF] border-4 border-black py-6 text-4xl font-black shadow-[10px_10px_0px_#000] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
+            disabled={isAiSpeaking}
+            className={`w-full border-4 border-black py-6 text-4xl font-black shadow-[10px_10px_0px_#000] transition-all
+              ${isAiSpeaking ? 'bg-zinc-400 grayscale cursor-not-allowed translate-x-1 translate-y-1 shadow-none' : 'bg-[#FF00FF] active:translate-x-1 active:translate-y-1 active:shadow-none hover:bg-[#00FF00]'}
+            `}
           >
-            RECORD
+            {isAiSpeaking ? "YAPPING..." : "RECORD"}
           </button>
-          {error && <p className="mt-6 bg-black text-white p-2 font-black text-xs uppercase animate-bounce italic">!! {error} !!</p>}
         </div>
       )}
 
