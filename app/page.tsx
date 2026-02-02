@@ -52,6 +52,16 @@ const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
   const analyserRef = useRef<AnalyserNode | null>(null);
 
   useEffect(() => {
+    useEffect(() => {
+  // Pre-load voices so they are ready the millisecond you hit "Record"
+  const loadVoices = () => {
+    window.speechSynthesis.getVoices();
+  };
+  loadVoices();
+  if (window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }
+}, []);
     if (!stream) return;
     audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     const source = audioContextRef.current.createMediaStreamSource(stream);
@@ -101,28 +111,30 @@ export default function AccentRoaster() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const shareRef = useRef<HTMLDivElement>(null);
   const speakSavage = (text: string) => {
-    if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) return;
-    
-    window.speechSynthesis.cancel(); // Kill any current yapping
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    // --- THE "SAVAGE" VOICE PROFILE ---
-    utterance.rate = 0.85;  // Slow = Condescending
-    utterance.pitch = 0.1;  // Low = Deep & Hateful
-    utterance.volume = 1;
+  if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) return;
+  
+  window.speechSynthesis.cancel(); 
+  const utterance = new SpeechSynthesisUtterance(text);
+  
+  // --- THE "HIGH-AURA BULLY" PROFILE ---
+  utterance.rate = 1.1;  // Slightly faster than normal (snappy)
+  utterance.pitch = 1.0; // Natural pitch (clearer on Fold 4)
+  utterance.volume = 1;
 
-    // Trigger state changes so the UI knows we're talking
-    utterance.onstart = () => setIsAiSpeaking(true);
-    utterance.onend = () => setIsAiSpeaking(false);
-    utterance.onerror = () => setIsAiSpeaking(false);
+  const voices = window.speechSynthesis.getVoices();
+  // We want the most "Natural" sounding voice. 
+  // On your Fold 4 (Android), 'Google UK English Male' is the elite choice.
+  const bestVoice = voices.find(v => v.name.includes('Google') && v.lang.includes('en-GB')) 
+                 || voices.find(v => v.name.includes('Natural')) 
+                 || voices[0];
+                 
+  utterance.voice = bestVoice;
 
-    const voices = window.speechSynthesis.getVoices();
-    // Try to find a British/UK voice because they sound more judgmental
-    const bestVoice = voices.find(v => v.lang.includes('en-GB') || v.name.includes('Google')) || voices[0];
-    utterance.voice = bestVoice;
+  utterance.onstart = () => setIsAiSpeaking(true);
+  utterance.onend = () => setIsAiSpeaking(false);
 
-    window.speechSynthesis.speak(utterance);
-  };
+  window.speechSynthesis.speak(utterance);
+};
 
   // --- LIFECYCLE: MOUNT ---
   useEffect(() => { 
