@@ -45,9 +45,45 @@ const Meter = ({ label, percent, color }: { label: string; percent: number; colo
     </div>
   </div>
 );
+// --- PLACE THIS BELOW THE METER COMPONENT ---
+const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
+  const [bars, setBars] = useState(new Array(15).fill(20));
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
 
+  useEffect(() => {
+    if (!stream) return;
+    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const source = audioContextRef.current.createMediaStreamSource(stream);
+    analyserRef.current = audioContextRef.current.createAnalyser();
+    analyserRef.current.fftSize = 64; 
+    source.connect(analyserRef.current);
+    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+    
+    const update = () => {
+      if (!analyserRef.current) return;
+      analyserRef.current.getByteFrequencyData(dataArray);
+      const newBars = Array.from(dataArray.slice(0, 15)).map(v => Math.max(10, (v / 255) * 100));
+      setBars(newBars);
+      requestAnimationFrame(update);
+    };
+    update();
+    return () => {
+      audioContextRef.current?.close();
+    };
+  }, [stream]);
+
+  return (
+    <div className="flex items-end justify-center gap-1 h-12 w-full my-6">
+      {bars.map((h, i) => (
+        <div key={i} className="w-3 bg-black border-t-2 border-black transition-all duration-75" style={{ height: `${h}%` }} />
+      ))}
+    </div>
+  );
+};
 export default function AccentRoaster() {
   // --- STATE MANAGEMENT ---
+  const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
   const [isFooterOpen, setIsFooterOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState<'landing' | 'recording' | 'analyzing' | 'results'>('landing');
@@ -96,6 +132,7 @@ export default function AccentRoaster() {
     try {
       setError(null);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setActiveStream(stream);
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
@@ -208,17 +245,31 @@ export default function AccentRoaster() {
         </div>
       )}
 
-      {/* --- 2. RECORDING SCREEN --- */}
-      {step === 'recording' && (
-        <div className="text-center w-full max-w-sm animate-in zoom-in-95 duration-300">
-          <div className="bg-white border-4 border-black p-6 mb-8 shadow-[12px_12px_0px_#000]">
-            <p className="text-sm font-black uppercase opacity-40 mb-4">Read Now Loudly:</p>
-            <p className="text-2xl font-black italic leading-tight underline decoration-4 underline-offset-4">"{challenge}"</p>
-          </div>
-          <div className="text-9xl font-black leading-none animate-pulse">{timer}</div>
-          <p className="text-xl font-black mt-8 uppercase tracking-widest bg-white border-2 border-black inline-block px-4">Recording...</p>
-        </div>
-      )}
+      {/* --- 2. RECORDING SCREEN (RE-DESIGNED) --- */}
+{step === 'recording' && (
+  <div className="text-center w-full max-w-sm animate-in zoom-in-95 duration-300">
+    <div className="bg-white border-4 border-black p-6 mb-4 shadow-[12px_12px_0px_#000] relative">
+      <p className="text-[10px] font-black uppercase opacity-40 mb-4 text-left">Recording Session:</p>
+      
+      {/* THE CHALLENGE TEXT */}
+      <p className="text-2xl font-black italic leading-tight underline decoration-4 underline-offset-4">
+        "{challenge}"
+      </p>
+
+      {/* THE LIVE WAVEFORM */}
+      <LiveVisualizer stream={activeStream} />
+
+      {/* THE COMPACT TIMER BADGE */}
+      <div className="absolute -bottom-5 right-6 bg-[#FF00FF] text-black border-4 border-black px-4 py-2 font-black text-2xl shadow-[4px_4px_0px_#000]">
+        00:0{timer}
+      </div>
+    </div>
+    
+    <p className="text-[10px] font-black mt-12 uppercase tracking-[0.2em] animate-pulse">
+      LISTENING TO YOUR FAILURES...
+    </p>
+  </div>
+)}
 
       {/* --- 3. ANALYZING SCREEN --- */}
       {step === 'analyzing' && (
