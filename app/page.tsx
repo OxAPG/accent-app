@@ -55,7 +55,8 @@ const Meter = ({ label, percent, color }: { label: string; percent: number; colo
     </div>
   </div>
 );
-// --- PLACE THIS BELOW THE METER COMPONENT ---
+
+// --- LIVE VISUALIZER ---
 const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
   const [bars, setBars] = useState(new Array(15).fill(20));
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -63,24 +64,25 @@ const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
 
   useEffect(() => {
     if (!stream) return;
-    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const source = audioContextRef.current.createMediaStreamSource(stream);
-    analyserRef.current = audioContextRef.current.createAnalyser();
-    analyserRef.current.fftSize = 64; 
-    source.connect(analyserRef.current);
-    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+    try {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      analyserRef.current = audioContextRef.current.createAnalyser();
+      analyserRef.current.fftSize = 64; 
+      source.connect(analyserRef.current);
+      const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+      
+      const update = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+        const newBars = Array.from(dataArray.slice(0, 15)).map(v => Math.max(10, (v / 255) * 100));
+        setBars(newBars);
+        requestAnimationFrame(update);
+      };
+      update();
+    } catch (e) { console.error("Visualizer failed", e); }
     
-    const update = () => {
-      if (!analyserRef.current) return;
-      analyserRef.current.getByteFrequencyData(dataArray);
-      const newBars = Array.from(dataArray.slice(0, 15)).map(v => Math.max(10, (v / 255) * 100));
-      setBars(newBars);
-      requestAnimationFrame(update);
-    };
-    update();
-    return () => {
-      audioContextRef.current?.close();
-    };
+    return () => { audioContextRef.current?.close(); };
   }, [stream]);
 
   return (
@@ -91,6 +93,7 @@ const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
     </div>
   );
 };
+
 export default function AccentRoaster() {
   // --- STATE MANAGEMENT ---
   const [isMuted, setIsMuted] = useState(false);
@@ -110,30 +113,43 @@ export default function AccentRoaster() {
   const chunksRef = useRef<Blob[]>([]);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const shareRef = useRef<HTMLDivElement>(null);
-  const speakSavage = (text: string) => {
-  if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) return;
-  
-  window.speechSynthesis.cancel(); 
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.1;
-  utterance.pitch = 1.0;
 
-  const voices = window.speechSynthesis.getVoices();
-  const targetVoice = voices.find(v => v.lang.includes('en-GB') || v.name.includes('Google')) || voices[0];
-  utterance.voice = targetVoice;
+  // --- REFACTORED: BULLETPROOF SPEECH ENGINE ---
+  const speakSavage = (text: string, onFinish?: () => void) => {
+    if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) {
+      if (onFinish) onFinish();
+      return;
+    }
+    
+    window.speechSynthesis.cancel(); 
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.1;
+    utterance.pitch = 1.0;
 
-  utterance.onstart = () => setIsAiSpeaking(true);
-  utterance.onend = () => setIsAiSpeaking(false);
-  utterance.onerror = () => setIsAiSpeaking(false);
+    const voices = window.speechSynthesis.getVoices();
+    const targetVoice = voices.find(v => v.lang.startsWith('en-GB') || v.name.includes('Google')) || voices[0];
+    utterance.voice = targetVoice;
 
-  window.speechSynthesis.speak(utterance);
-};
-
-  useEffect(() => {
-    const primeVoices = () => {
-      window.speechSynthesis.getVoices();
+    utterance.onstart = () => {
+      setIsAiSpeaking(true);
+      if (navigator.vibrate) navigator.vibrate(50);
     };
     
+    utterance.onend = () => {
+      setIsAiSpeaking(false);
+      if (onFinish) onFinish();
+    };
+
+    utterance.onerror = () => {
+      setIsAiSpeaking(false);
+      if (onFinish) onFinish(); // Fail forward if speech engine crashes
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  useEffect(() => {
+    const primeVoices = () => { window.speechSynthesis.getVoices(); };
     primeVoices();
     if (window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = primeVoices;
@@ -158,9 +174,8 @@ export default function AccentRoaster() {
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [step, timer]);
-useEffect(() => {
 
-    // 2. ROAST ON THE 2nd CARD (RESULTS SUB-STEP 1 / CARD 1)
+  useEffect(() => {
     if (step === 'results' && card === 1 && result?.roast) {
       speakSavage(result.roast);
     }
@@ -176,62 +191,45 @@ useEffect(() => {
     setStep('landing');
   };
 
-  const proceedToRecord = async () => {
+  // --- REFACTORED: START RECORDING (INSTANT ACTION) ---
+  const startRecording = async () => {
     try {
       setError(null);
+      // 1. Force Step Change IMMEDIATELY so the button never feels stuck
+      setStep('recording');
+      setTimer(8); // 3 seconds AI Intro + 5 seconds Record
+
+      // 2. Request Mic (Must be first in the user-gesture block)
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setActiveStream(stream);
+
+      // 3. Prepare Recorder
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
-      
       mediaRecorder.ondataavailable = (e) => { 
         if (e.data.size > 0) chunksRef.current.push(e.data); 
       };
-      
       mediaRecorder.onstop = handleRecordingStop;
+      
+      // 4. Start Mic instantly
       mediaRecorder.start();
-      setStep('recording');
-      setTimer(5);
+
+      // 5. Fire AI Voice (It will yap while the visualizer starts)
+      const randomText = welcomes[Math.floor(Math.random() * welcomes.length)];
+      speakSavage(randomText);
+
     } catch (err) {
-      setError("Mic access denied. Enable your mic to start roasting.");
+      console.error("Mic Error:", err);
+      setError("Mic access denied. Check your settings.");
+      setStep('landing');
     }
   };
-
-  const startRecording = async () => {
-  try {
-    setError(null);
-    // 1. INSTANT UI CHANGE (Prevents the "stuck" feeling)
-    setStep('recording');
-    setTimer(8); // 3 seconds for AI intro + 5 seconds for user speech
-
-    // 2. CAPTURE MIC IMMEDIATELY
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    setActiveStream(stream);
-
-    // 3. TRIGGER AI WELCOME (Fire and forget - no waiting!)
-    const randomText = welcomes[Math.floor(Math.random() * welcomes.length)];
-    speakSavage(randomText);
-
-    // 4. START MEDIA RECORDER IMMEDIATELY
-    const mediaRecorder = new MediaRecorder(stream);
-    mediaRecorderRef.current = mediaRecorder;
-    chunksRef.current = [];
-    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-    mediaRecorder.onstop = handleRecordingStop;
-    
-    mediaRecorder.start();
-
-  } catch (err) {
-    console.error("Mic Error:", err);
-    setError("Mic access denied. Resetting...");
-    setStep('landing');
-  }
-};
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       mediaRecorderRef.current.stop();
+      activeStream?.getTracks().forEach(track => track.stop()); // Clean hardware
       if (intervalRef.current) clearInterval(intervalRef.current);
     }
   };
@@ -239,7 +237,7 @@ useEffect(() => {
   const handleRecordingStop = async () => {
     setStep('analyzing');
     if (chunksRef.current.length === 0) {
-      setError("No audio captured. Speak louder!");
+      setError("No audio captured. Try again!");
       setStep('landing');
       return;
     }
@@ -294,18 +292,23 @@ useEffect(() => {
           text: `The AI says I sound like ${result?.celebrity}. 💀 #AccentRoaster`,
         });
       } else {
-        alert("Sharing not supported on this browser. Save the image instead!");
+        alert("Save the image to share!");
       }
-    } catch (err) {
-      console.error("Sharing failed", err);
-    }
+    } catch (err) { console.error("Sharing failed", err); }
   };
 
   if (!mounted) return <div className="min-h-screen bg-[#FFFF00]" />;
 
   return (
-    
     <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black overflow-hidden select-none">
+      
+      {/* ERROR OVERLAY */}
+      {error && (
+        <div className="fixed top-0 left-0 w-full bg-red-600 text-white p-2 text-center z-[100] font-black uppercase text-xs">
+          {error}
+        </div>
+      )}
+
       {/* --- MUTE BUTTON --- */}
       <button 
         onClick={() => {
@@ -325,8 +328,6 @@ useEffect(() => {
           </div>
         </div>
       )}
-
-      {/* ... rest of your landing/recording/results screens ... */}
 
       {/* --- 1. LANDING SCREEN --- */}
       {step === 'landing' && (
@@ -354,31 +355,24 @@ useEffect(() => {
         </div>
       )}
 
-      {/* --- 2. RECORDING SCREEN (RE-DESIGNED) --- */}
-{step === 'recording' && (
-  <div className="text-center w-full max-w-sm animate-in zoom-in-95 duration-300">
-    <div className="bg-white border-4 border-black p-6 mb-4 shadow-[12px_12px_0px_#000] relative">
-      <p className="text-[10px] font-black uppercase opacity-40 mb-4 text-left">Recording Session:</p>
-      
-      {/* THE CHALLENGE TEXT */}
-      <p className="text-2xl font-black italic leading-tight underline decoration-4 underline-offset-4">
-        "{challenge}"
-      </p>
-
-      {/* THE LIVE WAVEFORM */}
-      <LiveVisualizer stream={activeStream} />
-
-      {/* THE COMPACT TIMER BADGE */}
-      <div className="absolute -bottom-5 right-6 bg-[#FF00FF] text-black border-4 border-black px-4 py-2 font-black text-2xl shadow-[4px_4px_0px_#000]">
-        00:0{timer}
-      </div>
-    </div>
-    
-    <p className="text-[10px] font-black mt-12 uppercase tracking-[0.2em] animate-pulse">
-      LISTENING TO YOUR FAILURES...
-    </p>
-  </div>
-)}
+      {/* --- 2. RECORDING SCREEN --- */}
+      {step === 'recording' && (
+        <div className="text-center w-full max-w-sm animate-in zoom-in-95 duration-300">
+          <div className="bg-white border-4 border-black p-6 mb-4 shadow-[12px_12px_0px_#000] relative">
+            <p className="text-[10px] font-black uppercase opacity-40 mb-4 text-left">Recording Session:</p>
+            <p className="text-2xl font-black italic leading-tight underline decoration-4 underline-offset-4">
+              "{challenge}"
+            </p>
+            <LiveVisualizer stream={activeStream} />
+            <div className="absolute -bottom-5 right-6 bg-[#FF00FF] text-black border-4 border-black px-4 py-2 font-black text-2xl shadow-[4px_4px_0px_#000]">
+              00:0{timer > 5 ? 5 : timer}
+            </div>
+          </div>
+          <p className="text-[10px] font-black mt-12 uppercase tracking-[0.2em] animate-pulse">
+            {timer > 5 ? "Wait for AI insult..." : "SPEAK NOW! GO!"}
+          </p>
+        </div>
+      )}
 
       {/* --- 3. ANALYZING SCREEN --- */}
       {step === 'analyzing' && (
@@ -389,12 +383,10 @@ useEffect(() => {
         </div>
       )}
 
-      {/* --- 4. RESULTS (3-CARD CAROUSEL) --- */}
+      {/* --- 4. RESULTS --- */}
       {step === 'results' && result && (
         <div className="w-full max-w-sm flex flex-col items-center animate-in slide-in-from-bottom-12 duration-500">
           <div className="bg-white border-4 border-black p-6 w-full shadow-[12px_12px_0px_#000] mb-8 min-h-[460px] flex flex-col">
-            
-            {/* SUB-STEP 0: DNA METERS */}
             {card === 0 && (
               <div className="animate-in fade-in slide-in-from-bottom-4 flex-1">
                 <h2 className="text-3xl font-black mb-8 italic underline uppercase decoration-4">Accent DNA</h2>
@@ -404,8 +396,6 @@ useEffect(() => {
                 <p className="text-[10px] font-black uppercase opacity-30 mt-8 text-center">Calculated by Groq LPU Whisper V3</p>
               </div>
             )}
-
-            {/* SUB-STEP 1: THE PERSONAL ROAST */}
             {card === 1 && (
               <div className="animate-in fade-in slide-in-from-right-8 h-full flex flex-col justify-center flex-1">
                 <p className="text-[25px] text-[#000000] font-black uppercase opacity-30 mb-4">Transcription: "{result.transcription}"</p>
@@ -414,8 +404,6 @@ useEffect(() => {
                 </p>
               </div>
             )}
-
-            {/* SUB-STEP 2: SHAREABLE STORY CARD */}
             {card === 2 && (
               <div className="flex flex-col h-full animate-in zoom-in-95 duration-300">
                 <div ref={shareRef} className="bg-[#FF00FF] border-4 border-black p-6 flex flex-col justify-between text-white h-[400px] shadow-[8px_8px_0px_#000]">
@@ -423,12 +411,10 @@ useEffect(() => {
                     <h1 className="text-5xl font-black italic leading-none">ROASTED.</h1>
                     <p className="text-[8px] font-black tracking-widest mt-1 opacity-70">ACCENT-ROASTER.AI // 2026</p>
                   </div>
-                  
                   <div className="bg-white text-black p-4 border-4 border-black rotate-2 text-center shadow-[4px_4px_0px_#000]">
                     <p className="text-[10px] font-black uppercase opacity-40">Primary Origin:</p>
                     <p className="text-3xl font-black uppercase leading-none">{result.heritage[0].country}</p>
                   </div>
-
                   <div className="space-y-4">
                     <div className="bg-black text-[#00FF00] p-3 font-bold italic text-sm leading-tight border-2 border-white">
                       "{result.celebrity}"
@@ -438,7 +424,6 @@ useEffect(() => {
                     </div>
                   </div>
                 </div>
-
                 <div className="grid grid-cols-2 gap-3 mt-6">
                   <button onClick={downloadCard} className="bg-[#00FFFF] border-2 border-black p-3 font-black text-xs uppercase shadow-[4px_4px_0px_#000] active:shadow-none active:translate-y-1 transition-all">SAVE 💾</button>
                   <button onClick={shareCard} className="bg-[#00FF00] border-2 border-black p-3 font-black text-xs uppercase shadow-[4px_4px_0px_#000] active:shadow-none active:translate-y-1 transition-all">SHARE 🚀</button>
@@ -446,8 +431,6 @@ useEffect(() => {
               </div>
             )}
           </div>
-
-          {/* GLOBAL NAVIGATION BUTTON */}
           <button 
             onClick={() => card < 2 ? setCard(c => c + 1) : resetGame()} 
             className="w-full bg-black text-white py-5 text-2xl font-black uppercase border-4 border-black shadow-[6px_6px_0px_#FF00FF] hover:bg-white hover:text-black transition-all active:shadow-none active:translate-y-1"
@@ -456,9 +439,8 @@ useEffect(() => {
           </button>
         </div>
       )}
-      {/* ... (All your Steps: landing, recording, results) ... */}
 
-      {/* --- ADD THE DRAWER HERE (ABSOLUTE BOTTOM) --- */}
+      {/* --- LEGAL DRAWER --- */}
       <button 
         onClick={() => setIsFooterOpen(true)}
         className="fixed bottom-4 right-4 text-[8px] font-black uppercase opacity-20 hover:opacity-100 transition-opacity underline decoration-1 underline-offset-2 z-40"
@@ -470,7 +452,6 @@ useEffect(() => {
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 backdrop-blur-sm">
           <div className="absolute inset-0" onClick={() => setIsFooterOpen(false)} />
           <div className="relative w-full max-w-lg bg-[#000000] text-white border-t-8 border-[#FF00FF] p-8 animate-in slide-in-from-bottom-full duration-500">
-            {/* ... (Drawer Content from previous step) ... */}
             <button onClick={() => setIsFooterOpen(false)} className="absolute top-4 right-4 bg-[#FF00FF] text-black font-black px-2 py-1 text-[10px] border-2 border-black">CLOSE [X]</button>
             <h3 className="text-2xl font-black italic uppercase mb-6 underline decoration-[#FF00FF] underline-offset-8">The Legal Shield</h3>
             <div className="text-[10px] font-bold uppercase space-y-4 opacity-80">
@@ -481,7 +462,6 @@ useEffect(() => {
           </div>
         </div>
       )}
-
-    </div> // This is the FINAL closing div of your return
+    </div>
   );
 }
