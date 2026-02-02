@@ -213,7 +213,7 @@ export default function AccentRoaster() {
     setResult(null);
     setCard(0);
     setError(null);
-    setTimer(10);
+    setTimer(5);
     setStep('landing');
   };
 
@@ -281,7 +281,7 @@ export default function AccentRoaster() {
     const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
     
     // Check if audio file meets minimum size for Whisper to work accurately
-    if (audioBlob.size < 15000) {
+    if (audioBlob.size < 20000) {
       setError("I heard silence. Use your voice, not your thoughts.");
       setStep('landing');
       return;
