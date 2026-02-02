@@ -16,7 +16,7 @@ interface RoastResult {
   celebrity: string;
 }
 
-// --- FULL DATA ARRAYS (10 CHALLENGES + 7 WELCOMES) ---
+// --- FULL DATA ARRAYS ---
 const CHALLENGES = [
   "Can I please get a large iced latte with oat milk and zero attitude?",
   "I'm literally just a girl, please don't ask me to explain my credit card statement.",
@@ -97,7 +97,6 @@ const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
 
 // --- MAIN APPLICATION ---
 export default function AccentRoaster() {
-  // --- STATE ---
   const [isMuted, setIsMuted] = useState(false);
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
@@ -111,7 +110,6 @@ export default function AccentRoaster() {
   const [error, setError] = useState<string | null>(null);
   const [isIAB, setIsIAB] = useState(false);
 
-  // --- REFS ---
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -147,8 +145,11 @@ export default function AccentRoaster() {
 
   // --- LIFECYCLE ---
   useEffect(() => {
+    // NUCLEAR DETECTION
     const ua = navigator.userAgent || navigator.vendor || (window as any).opera;
-    setIsIAB(/Instagram|FBAN|FBAV|Threads/i.test(ua));
+    const isMeta = /Instagram|FBAN|FBAV|Threads|Messenger/i.test(ua);
+    const isInstaWindow = !!(window as any).Instagram || !!(window as any)._instgrm;
+    setIsIAB(isMeta || isInstaWindow);
 
     const primeVoices = () => { if (typeof window !== 'undefined') window.speechSynthesis.getVoices(); };
     primeVoices();
@@ -176,7 +177,7 @@ export default function AccentRoaster() {
     }
   }, [step, card, result]);
 
-  // --- LOGIC ---
+  // --- CORE LOGIC ---
   const resetGame = () => {
     setChallenge(CHALLENGES[Math.floor(Math.random() * CHALLENGES.length)]);
     setResult(null); setCard(0); setError(null); setTimer(10); setStep('landing');
@@ -200,7 +201,7 @@ export default function AccentRoaster() {
         setStep('recording');
         setTimer(10);
       });
-    } catch (err) { setError("Mic access denied. Real browsers only."); setStep('landing'); }
+    } catch (err) { setError("Mic blocked by browser."); setStep('landing'); }
   };
 
   const stopRecording = () => {
@@ -223,7 +224,7 @@ export default function AccentRoaster() {
 
     const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
     
-    // GUARD 2: Size (Raised to 20KB for strict filtering)
+    // GUARD 2: Size check (20KB for strict filtering)
     if (audioBlob.size < 20000) {
       setError("Are you mute? Speak up or go home, NPC.");
       setStep('landing');
@@ -250,7 +251,7 @@ export default function AccentRoaster() {
       if (!res.ok) throw new Error(data.error);
       setResult(data); 
       setStep('results');
-    } catch (err: any) { setError("AI Server Crash. Roast too hot."); setStep('landing'); }
+    } catch (err: any) { setError("AI Server Crash."); setStep('landing'); }
   };
 
   const downloadCard = async () => {
@@ -274,32 +275,41 @@ export default function AccentRoaster() {
     } catch (err) { console.error(err); }
   };
 
+  // --- RENDERING ---
   if (!mounted) return <div className="min-h-screen bg-[#FFFF00]" />;
+
+  // THE INSTAGRAM BREAKOUT GATE
+  if (isIAB) {
+    return (
+      <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black">
+        <div className="text-center w-full max-w-sm">
+          <h1 className="text-6xl font-black mb-8 uppercase italic -rotate-2 drop-shadow-[4px_4px_0px_#FF00FF]">STOP.</h1>
+          <div className="bg-black text-[#00FF00] border-4 border-black p-6 mb-8 shadow-[8px_8px_0px_#00FF00]">
+            <p className="text-xl font-black uppercase leading-tight">Instagram is sabotaging your microphone.</p>
+          </div>
+          <p className="font-bold mb-8 uppercase text-sm leading-relaxed">
+            1. Tap the <span className="bg-white px-2 text-black font-black">...</span> (top right)
+            <br /><br />
+            2. Select <span className="text-[#FF00FF] font-black italic underline">"Open in Browser"</span>
+          </p>
+          <button 
+            onClick={() => { navigator.clipboard.writeText(window.location.href); alert("Link Copied! Now open Chrome."); }}
+            className="w-full bg-[#FF00FF] border-4 border-black py-4 text-2xl font-black uppercase shadow-[6px_6px_0px_#000]"
+          >
+            COPY LINK 🔗
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black overflow-hidden select-none">
       
-      {/* INSTA RISK POPUP */}
-      {isIAB && step === 'landing' && (
-        <div className="fixed inset-0 bg-black/90 z-[5000] flex items-center justify-center p-6">
-          <div className="bg-white border-4 border-black p-8 text-center shadow-[10px_10px_0px_#FF00FF] animate-in zoom-in duration-300">
-            <h2 className="text-3xl font-black uppercase mb-4 italic">INSTA DETECTED</h2>
-            <p className="font-bold mb-6 text-sm uppercase">Instagram kills microphones. Redirect to Chrome or Safari to play properly.</p>
-            <button 
-              onClick={() => { navigator.clipboard.writeText(window.location.href); alert("Link Copied! Now open Chrome."); }}
-              className="w-full bg-[#00FF00] border-4 border-black py-4 font-black uppercase shadow-[4px_4px_0px_#000] mb-4 active:translate-y-1"
-            >
-              COPY LINK 🔗
-            </button>
-            <button onClick={() => setIsIAB(false)} className="text-[10px] font-bold underline opacity-40 uppercase tracking-widest">I'LL RISK IT (MIGHT ERROR)</button>
-          </div>
-        </div>
-      )}
-
       {error && (
         <div className="fixed top-0 left-0 right-0 bg-red-600 text-white p-4 z-[1000] font-black text-center text-xs uppercase border-b-4 border-black animate-bounce flex justify-between items-center">
           <span>⚠️ {error}</span>
-          <button onClick={() => setError(null)} className="bg-black text-white px-2 py-1 text-[8px] uppercase">[Dismiss]</button>
+          <button onClick={() => setError(null)} className="bg-black text-white px-2 py-1 text-[8px] uppercase tracking-tighter">[Dismiss]</button>
         </div>
       )}
 
@@ -316,7 +326,7 @@ export default function AccentRoaster() {
         </div>
       )}
 
-      {/* --- SCREEN: LANDING --- */}
+      {/* --- STEP: LANDING --- */}
       {step === 'landing' && (
         <div className="text-center w-full max-w-sm">
           <h1 className={`text-5xl font-black mb-8 uppercase italic -rotate-2 drop-shadow-[4px_4px_0px_#FF00FF] transition-all duration-300 ${isAiSpeaking ? 'text-red-600 scale-105' : ''}`}>
@@ -338,7 +348,7 @@ export default function AccentRoaster() {
         </div>
       )}
 
-      {/* --- SCREEN: RECORDING --- */}
+      {/* --- STEP: RECORDING --- */}
       {step === 'recording' && (
         <div className="text-center w-full max-w-sm animate-in zoom-in-95 duration-300">
           <div className="bg-white border-4 border-black p-6 mb-4 shadow-[12px_12px_0px_#000] relative">
@@ -347,21 +357,20 @@ export default function AccentRoaster() {
             <LiveVisualizer stream={activeStream} />
             <div className="absolute -bottom-5 right-6 bg-[#FF00FF] text-black border-4 border-black px-4 py-2 font-black text-2xl shadow-[4px_4px_0px_#000]">{timer}s</div>
           </div>
-          <button onClick={stopRecording} className="w-full mt-10 bg-[#00FF00] border-4 border-black py-4 text-3xl font-black uppercase shadow-[6px_6px_0px_#000] active:translate-y-1 hover:bg-red-500">DONE ⏹️</button>
-          <p className="text-[10px] font-black mt-8 uppercase tracking-[0.2em] animate-pulse text-center">SPEAK NOW! I CAN'T HEAR COWARDS.</p>
+          <button onClick={stopRecording} className="w-full mt-10 bg-[#00FF00] border-4 border-black py-4 text-3xl font-black uppercase shadow-[6px_6px_0px_#000] active:translate-y-1 hover:bg-red-500 hover:text-white transition-colors">DONE ⏹️</button>
         </div>
       )}
 
-      {/* --- SCREEN: ANALYZING --- */}
+      {/* --- STEP: ANALYZING --- */}
       {step === 'analyzing' && (
         <div className="text-center">
           <div className="w-20 h-20 border-8 border-black border-t-[#FF00FF] rounded-full animate-spin mx-auto mb-8"></div>
           <h2 className="text-4xl font-black uppercase italic animate-pulse">Consulting the Council...</h2>
-          <p className="mt-4 font-bold opacity-60 italic text-sm text-center uppercase">Calculating your aura deficit...</p>
+          <p className="mt-4 font-bold opacity-60 italic text-sm text-center uppercase tracking-widest">Calculating your aura deficit...</p>
         </div>
       )}
 
-      {/* --- SCREEN: RESULTS CAROUSEL --- */}
+      {/* --- STEP: RESULTS --- */}
       {step === 'results' && result && (
         <div className="w-full max-w-sm flex flex-col items-center animate-in slide-in-from-bottom-12 duration-500">
           <div className="bg-white border-4 border-black p-6 w-full shadow-[12px_12px_0px_#000] mb-8 min-h-[460px] flex flex-col">
@@ -396,8 +405,8 @@ export default function AccentRoaster() {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mt-6">
-                  <button onClick={downloadCard} className="bg-[#00FFFF] border-2 border-black p-3 font-black text-xs uppercase shadow-[4px_4px_0px_#000] active:translate-y-1">SAVE 💾</button>
-                  <button onClick={shareCard} className="bg-[#00FF00] border-2 border-black p-3 font-black text-xs uppercase shadow-[4px_4px_0px_#000] active:translate-y-1">SHARE 🚀</button>
+                  <button onClick={downloadCard} className="bg-[#00FFFF] border-2 border-black p-3 font-black text-xs uppercase shadow-[4px_4px_0px_#000] active:translate-y-1 transition-all">SAVE 💾</button>
+                  <button onClick={shareCard} className="bg-[#00FF00] border-2 border-black p-3 font-black text-xs uppercase shadow-[4px_4px_0px_#000] active:translate-y-1 transition-all">SHARE 🚀</button>
                 </div>
               </div>
             )}
@@ -413,13 +422,7 @@ export default function AccentRoaster() {
       )}
 
       {/* --- DRAWER: LEGAL --- */}
-      <button 
-        onClick={() => setIsFooterOpen(true)}
-        className="fixed bottom-4 right-4 text-[8px] font-black uppercase opacity-20 hover:opacity-100 underline z-40"
-      >
-        [ Legal & Privacy ]
-      </button>
-
+      <button onClick={() => setIsFooterOpen(true)} className="fixed bottom-4 right-4 text-[8px] font-black uppercase opacity-20 hover:opacity-100 underline z-40">[ Legal & Privacy ]</button>
       {isFooterOpen && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 backdrop-blur-sm">
           <div className="absolute inset-0" onClick={() => setIsFooterOpen(false)} />
