@@ -352,11 +352,46 @@ export default function AccentRoaster() {
     } catch (err) { console.error("Sharing failed", err); }
   };
 
-  if (!mounted) return <div className="min-h-screen bg-[#FFFF00]" />;
+  // This ensures we don't show the game logic until we know the browser type
+if (!mounted) return <div className="min-h-screen bg-[#FFFF00]" />;
+
+// NEW: If we are on Insta, stop here. Don't even load the landing screen logic.
+if (isIAB) {
+  return (
+    <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black">
+      <div className="text-center w-full max-w-sm">
+        <h1 className="text-6xl font-black mb-8 uppercase italic -rotate-2 drop-shadow-[4px_4px_0px_#FF00FF]">
+          STOP.
+        </h1>
+        <div className="bg-black text-[#00FF00] border-4 border-black p-6 mb-8 shadow-[8px_8px_0px_#00FF00]">
+          <p className="text-xl font-black uppercase leading-tight">
+            Instagram is holding your microphone hostage.
+          </p>
+        </div>
+        <p className="font-bold mb-8 uppercase text-sm">
+          1. Tap the <span className="bg-white px-2 text-black">...</span> (top right)
+          <br /><br />
+          2. Select <span className="text-[#FF00FF]">"Open in Browser"</span>
+        </p>
+        <button 
+          onClick={() => {
+            navigator.clipboard.writeText(window.location.href);
+            alert("Link Copied! Paste it into Chrome or Safari.");
+          }}
+          className="w-full bg-[#FF00FF] border-4 border-black py-4 text-2xl font-black uppercase shadow-[6px_6px_0px_#000] active:translate-y-1"
+        >
+          COPY LINK 🔗
+        </button>
+      </div>
+    </div>
+  );
+}
 
   return (
     <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black overflow-hidden select-none">
-      
+      <div className="fixed bottom-0 left-0 text-[10px] bg-white z-[5000]">
+ DEBUG: {isIAB ? "INSTA DETECTED" : "REGULAR BROWSER"}
+</div>
       {/* ERROR OVERLAY */}
       {error && (
         <div className="fixed top-0 left-0 right-0 bg-red-600 text-white p-4 z-[1000] font-black text-center text-xs uppercase border-b-4 border-black animate-bounce">
