@@ -110,32 +110,65 @@ export default function AccentRoaster() {
   const chunksRef = useRef<Blob[]>([]);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const shareRef = useRef<HTMLDivElement>(null);
-  const speakSavage = (text: string, onEnd?: () => void) => {
-    if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) return;
-    
-    window.speechSynthesis.cancel(); // Kill any current yapping
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    // --- THE "SAVAGE" VOICE PROFILE ---
-    utterance.rate = 0.85;  // Slow = Condescending
-    utterance.pitch = 0.1;  // Low = Deep & Hateful
-    utterance.volume = 1;
+  const speakSavage = (text: string, onFinish?: () => void) => {
+  if (isMuted || typeof window === 'undefined' || !window.speechSynthesis) {
+    if (onFinish) onFinish();
+    return;
+  }
+  
+  window.speechSynthesis.cancel(); 
+  const utterance = new SpeechSynthesisUtterance(text);
+  
+  // --- THE "UNIVERSAL BULLY" SETTINGS ---
+  utterance.rate = 1.1;  // Slightly fast = impatient
+  utterance.pitch = 1.0; // Neutral pitch is safest across all hardware
+  utterance.volume = 1.0;
 
-    // Trigger state changes so the UI knows we're talking
-    utterance.onstart = () => setIsAiSpeaking(true);
-    utterance.onend = () => {
-      setIsAiSpeaking(false);
-      if (onEnd) onEnd();
-    };
-    utterance.onerror = () => setIsAiSpeaking(false);
+  const voices = window.speechSynthesis.getVoices();
+  
+  /**
+   * THE RANKING SYSTEM:
+   * 1. 'en-GB' (British) - Higher "disrespect" factor.
+   * 2. 'en-IN' (Indian-English) - Clearer for the local market.
+   * 3. 'en-US' (American) - The classic "Mean Girl" vibe.
+   */
+  const targetVoice = 
+    // High-quality British (Google/Samsung Natural)
+    voices.find(v => (v.lang.startsWith('en-GB')) && (v.name.includes('Natural') || v.name.includes('Google'))) ||
+    // High-quality Indian-English (Clear & Sharp)
+    voices.find(v => (v.lang.startsWith('en-IN')) && v.name.includes('Google')) ||
+    // High-quality US (Sarcastic)
+    voices.find(v => (v.lang.startsWith('en-US')) && v.name.includes('Natural')) ||
+    // Fallback to any English
+    voices.find(v => v.lang.startsWith('en')) ||
+    voices[0];
 
-    const voices = window.speechSynthesis.getVoices();
-    // Try to find a British/UK voice because they sound more judgmental
-    const bestVoice = voices.find(v => v.lang.includes('en-GB') || v.name.includes('Google')) || voices[0];
-    utterance.voice = bestVoice;
+  utterance.voice = targetVoice;
 
-    window.speechSynthesis.speak(utterance);
+  utterance.onstart = () => {
+    setIsAiSpeaking(true);
+    // Haptic Feedback: Short "Pulse" on start (Android standard)
+    if (navigator.vibrate) navigator.vibrate(50);
   };
+
+  utterance.onend = () => {
+    setIsAiSpeaking(false);
+    if (onFinish) onFinish();
+  };
+
+  window.speechSynthesis.speak(utterance);
+};
+
+  useEffect(() => {
+    const primeVoices = () => {
+      window.speechSynthesis.getVoices();
+    };
+    
+    primeVoices();
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = primeVoices;
+    }
+  }, []);
 
   // --- LIFECYCLE: MOUNT ---
   useEffect(() => { 
