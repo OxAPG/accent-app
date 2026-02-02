@@ -58,7 +58,7 @@ export async function POST(req: Request) {
               - User's Actual Output: "${userSpeech}"
 
 
-              1. ACCENT DETECTION LOGIC:
+              1. ACCENT DETECTION LOGIC:[this is important data focus on words and accent properly then like result find patterns used by ppl of countries compare then give results u cn even give in any number dont have to round off]
               1. **Phonetic Analysis**: Look for specific "Whisper artifacts" (e.g., "v" becoming "b", "th" becoming "z" or "d", dropped "s" at ends of words).
               2. **Grammar Fingerprinting**: Identify sentence structures unique to specific regions.
               3. **Statistical Weighting**: Assign a percentage match to 3 different countries based on these linguistic markers. Ensure the total equals exactly 100%.
