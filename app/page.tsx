@@ -443,7 +443,7 @@ if (isIAB) {
   return (
     <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black overflow-hidden select-none">
       <div className="fixed bottom-0 left-0 text-[10px] bg-white z-[5000]">
- DEBUG: {isIAB ? "INSTA DETECTED" : "REGULAR BROWSER"}
+ DEBUG: {isIAB ? "INSTA DETECTED" : "0"}
 </div>
       {/* ERROR OVERLAY */}
       {error && (
