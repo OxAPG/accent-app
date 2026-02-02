@@ -61,36 +61,60 @@ const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
   const [bars, setBars] = useState(new Array(15).fill(20));
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationRef = useRef<number>(0);
 
   useEffect(() => {
     if (!stream) return;
-    try {
-      const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContextClass) return;
-      
-      audioContextRef.current = new AudioContextClass();
-      const source = audioContextRef.current!.createMediaStreamSource(stream);
-      analyserRef.current = audioContextRef.current!.createAnalyser();
-      analyserRef.current.fftSize = 64; 
-      source.connect(analyserRef.current);
-      const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-      const [isIAB, setIsIAB] = useState(false);
-      const update = () => {
-        if (!analyserRef.current) return;
-        analyserRef.current.getByteFrequencyData(dataArray);
-        const newBars = Array.from(dataArray.slice(0, 15)).map(v => Math.max(10, (v / 255) * 100));
-        setBars(newBars);
-        requestAnimationFrame(update);
-      };
-      update();
-    } catch (e) { console.error("Visualizer Error", e); }
-    return () => { audioContextRef.current?.close(); };
+
+    const startVisualizer = async () => {
+      try {
+        const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+        const ctx = new AudioContextClass();
+        audioContextRef.current = ctx;
+
+        // WAKE UP THE ENGINE (Critical for Mobile/IAB)
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
+
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 64;
+        source.connect(analyser);
+        analyserRef.current = analyser;
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        
+        const update = () => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteFrequencyData(dataArray);
+          // Boost the sensitivity so the bars actually move
+          const newBars = Array.from(dataArray.slice(0, 15)).map(v => Math.max(10, (v / 255) * 120));
+          setBars(newBars);
+          animationRef.current = requestAnimationFrame(update);
+        };
+        update();
+      } catch (e) {
+        console.error("Visualizer engine failed to wake up", e);
+      }
+    };
+
+    startVisualizer();
+
+    return () => {
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      if (audioContextRef.current) audioContextRef.current.close();
+    };
   }, [stream]);
 
   return (
     <div className="flex items-end justify-center gap-1 h-12 w-full my-6">
       {bars.map((h, i) => (
-        <div key={i} className="w-3 bg-black border-t-2 border-black transition-all duration-75" style={{ height: `${h}%` }} />
+        <div 
+          key={i} 
+          className="w-3 bg-black border-t-2 border-black transition-all duration-75" 
+          style={{ height: `${h}%` }} 
+        />
       ))}
     </div>
   );
@@ -99,6 +123,7 @@ const LiveVisualizer = ({ stream }: { stream: MediaStream | null }) => {
 export default function AccentRoaster() {
   // --- STATE MANAGEMENT ---
   const [isMuted, setIsMuted] = useState(false);
+  const [isIAB, setIsIAB] = useState(false);
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
   const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
   const [isFooterOpen, setIsFooterOpen] = useState(false);
@@ -109,7 +134,6 @@ export default function AccentRoaster() {
   const [result, setResult] = useState<RoastResult | null>(null);
   const [card, setCard] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [isIAB, setIsIAB] = useState(false);
 
   // --- REFS ---
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -181,7 +205,7 @@ export default function AccentRoaster() {
     if (window.speechSynthesis.onvoiceschanged !== undefined) {
       window.speechSynthesis.onvoiceschanged = primeVoices;
     }
-    const ua = typeof navigator !== 'undefined' ? navigator.userAgent || navigator.vendor : '';
+    const ua = navigator.userAgent || navigator.vendor || (window as any).opera;
     const isInstagram = /Instagram|FBAN|FBAV/i.test(ua);
     setIsIAB(isInstagram);
     setMounted(true);
@@ -332,16 +356,25 @@ export default function AccentRoaster() {
 
   return (
     <div className="min-h-screen bg-[#FFFF00] font-mono p-4 flex flex-col items-center justify-center text-black overflow-hidden select-none">
-      {isIAB && step === 'landing' && (
-  <div className="fixed top-0 left-0 right-0 bg-black text-[#00FF00] p-4 z-[3000] font-black text-center text-[10px] uppercase border-b-4 border-[#00FF00] animate-pulse">
-    ⚠️ INSTAGRAM BLOCKS MIC/VOICE. TAP (...) AND "OPEN IN SYSTEM BROWSER" TO PLAY.
-  </div>
-)}
+      
       {/* ERROR OVERLAY */}
       {error && (
         <div className="fixed top-0 left-0 right-0 bg-red-600 text-white p-4 z-[1000] font-black text-center text-xs uppercase border-b-4 border-black animate-bounce">
           ⚠️ {error} <button onClick={() => setError(null)} className="ml-4 underline">[DISMISS]</button>
         </div>
+      )}
+
+      {isIAB ? (
+        /* --- Paste the STOP / Instagram Gate code here --- */
+        <div className="text-center ...">
+          <h1 className="text-6xl font-black">STOP.</h1>
+          {/* ... (The rest of the Gate UI) */}
+        </div>
+      ) : (
+        /* --- This is your existing app content --- */
+        <>
+          {/* ... landing, recording, results screens ... */}
+        </>
       )}
 
       {/* MUTE BUTTON */}
