@@ -30,11 +30,11 @@ const CHALLENGES = [
 ];
 
 const welcomes = [
-  "oh look, another low-aura npc trying to beat the allegations. press the button, loser.",
-  "you actually think you have a chance? cute. click record so i can laugh at your life.",
+  "oh look, another low-aura npc trying to beat the allegations, loser.",
+  "you actually think you have a chance? go ahead record so i can laugh at your life.",
   "same mid energy, different day. go ahead, pollute my microphone with your accent.",
-  "i’ve seen bots with more charisma than you. press record before i get bored.",
-  "don’t choke on your own ego. or do. i actually don’t care. hit the button.",
+  "i’ve seen bots with more charisma than you. record before i get bored.",
+  "don’t choke on your own ego. or do. i actually don’t care.,,,",
   "wow, the audacity to stand there with that fit and try to speak. record it, i dare you.",
   "are you lost? this isn't the 'mid-accent anonymous' meeting. hurry up and record."
 ];
